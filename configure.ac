@@ -64,7 +64,7 @@ case $FRAMAC_VERSION in
 version of $REQUIRED_NAME)
     fi;;
   *)
-    if test $VERSION_NUMBER -lt $REQUIRED_NUMBER; then
+    if test "$VERSION_NUMBER" -lt "$REQUIRED_NUMBER"; then
       AC_MSG_ERROR(Frama-C version must be at least \
 $REQUIRED_NAME-$REQUIRED_NUMBER.)
     else

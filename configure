@@ -2026,15 +2026,16 @@ ac_link='$CC -o conftest$ac_exeext $CFLAGS $CPPFLAGS $LDFLAGS conftest.$ac_ext $
 ac_compiler_gnu=$ac_cv_c_compiler_gnu
 
 
-          KNOWN_PLUGINS=$(frama-c -plugins | \
-            sed -e '/\[kernel\]/d' -e 's/\([^ ][^ ]*\( [^ ][^ ]*\)*\)  .*/\1/' \
+          KNOWN_PLUGINS=$(frama-c -help | \
+            sed -e '0,/^\*\*\*\*\*/ d' \
+                -e 's/\([^ ][^ ]*\( [^ ][^ ]*\)*\)  .*/\1/' \
                 -e '/^ /d' -e '/^$/d' | \
             tr "a-z- " "A-Z__")
           for plugin in ${KNOWN_PLUGINS}; do
             export $(echo ENABLE_$plugin)=yes
           done
 
-          FRAMAC_VERSION=`frama-c -version`
+          FRAMAC_VERSION=`frama-c -version | sed -n -e "s|^Version: *\(.*\)$|\1|p"`
 
           # Extract the first word of "frama-c-gui", so it can be a program name with args.
 set dummy frama-c-gui; ac_word=$2
@@ -2535,7 +2536,7 @@ $as_echo "$as_me: WARNING: no guarantee of compatibility with your Frama-C custo
 version of $REQUIRED_NAME" >&2;}
     fi;;
   *)
-    if test $VERSION_NUMBER -lt $REQUIRED_NUMBER; then
+    if test "$VERSION_NUMBER" -lt "$REQUIRED_NUMBER"; then
       as_fn_error $? "Frama-C version must be at least \
 $REQUIRED_NAME-$REQUIRED_NUMBER." "$LINENO" 5
     else
