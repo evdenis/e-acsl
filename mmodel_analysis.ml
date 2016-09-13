@@ -194,8 +194,8 @@ module rec Transfer
         assert (is_ptr_or_array_exp e2);
         base_addr e2
       end
-    | Info(e, _) | CastE(_, e) -> base_addr e
-    | BinOp((MinusPP | PlusA | MinusA | Mult | Div | Mod |Shiftlt | Shiftrt 
+    | Info(e, _) | CastE(_, _, e) -> base_addr e
+    | BinOp((MinusPP | PlusA _ | MinusA _ | Mult _ | Div _ | Mod |Shiftlt _ | Shiftrt
                 | Lt | Gt | Le | Ge | Eq | Ne | BAnd | BXor | BOr | LAnd | LOr),
             _, _, _)
     | UnOp _ | Const _ | SizeOf _ | SizeOfE _ | SizeOfStr _ | AlignOf _ 
@@ -243,7 +243,7 @@ module rec Transfer
         assert (is_ptr_or_array_exp e2);
         extend_from_addr state lv e2
       end
-    | CastE(_, e) | Info(e, _) -> extend_from_addr state lv e
+    | CastE(_, _, e) | Info(e, _) -> extend_from_addr state lv e
     | _ -> state, false
 
   let handle_assignment state (lhost, _ as lv) e =
@@ -267,7 +267,7 @@ module rec Transfer
   and register_term kf varinfos term = match term.term_node with
     | TLval tlv | TAddrOf tlv | TStartOf tlv -> 
       register_term_lval kf varinfos tlv
-    | TCastE(_, t) | Tat(t, _) | Tlet(_, t) ->
+    | TCastE(_, _, t) | Tat(t, _) | Tlet(_, t) ->
       register_term kf varinfos t
     | Tif(_, t1, t2) ->
       let varinfos = register_term kf varinfos t1 in
@@ -677,8 +677,8 @@ and must_model_exp ?kf ?stmt e = match e.enode with
   | BinOp((PlusPI | IndexPI | MinusPI), e1, _, _) -> must_model_exp ?kf ?stmt e1
   | BinOp(MinusPP, e1, e2, _) -> 
     must_model_exp ?kf ?stmt e1 || must_model_exp ?kf ?stmt e2
-  | Info(e, _) | CastE(_, e) -> must_model_exp ?kf ?stmt e
-  | BinOp((PlusA | MinusA | Mult | Div | Mod |Shiftlt | Shiftrt 
+  | Info(e, _) | CastE(_, _, e) -> must_model_exp ?kf ?stmt e
+  | BinOp((PlusA _ | MinusA _ | Mult _ | Div _ | Mod |Shiftlt _ | Shiftrt 
               | Lt | Gt | Le | Ge | Eq | Ne | BAnd | BXor | BOr | LAnd | LOr),
           _, _, _)
   | Const _ -> (* possible in case of static address *) false

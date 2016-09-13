@@ -251,7 +251,7 @@ let rec type_term t =
     | TAlignOfE t ->
       ignore (type_term t);
       dup align_of (get_cty t)
-    | TUnOp(Neg, t) -> 
+    | TUnOp(Neg _, t) -> 
       unary_arithmetic
 	(fun l u -> let opp = Z.sub Z.zero in opp u, opp l) t
     | TUnOp(BNot, t) ->
@@ -265,7 +265,7 @@ let rec type_term t =
       let ty_t = type_term t in
       let ty = Interv(Z.zero, Z.one) in
       ty, join ty ty_t
-    | TBinOp(PlusA, t1, t2) -> 
+    | TBinOp(PlusA _, t1, t2) -> 
       let add l1 u1 l2 u2 = Z.add l1 l2, Z.add u1 u2 in
       binary_arithmetic t.term_type add t1 t2 t
     | TBinOp((PlusPI | IndexPI | MinusPI | MinusPP), t1, t2) -> 
@@ -273,11 +273,11 @@ let rec type_term t =
       ignore (type_term t2);
       let ty = No_integral lty in
       ty, ty
-    | TBinOp(MinusA, t1, t2) -> 
+    | TBinOp(MinusA _, t1, t2) -> 
       let sub l1 u1 l2 u2 = Z.sub l1 u2, Z.sub u1 l2 in
       binary_arithmetic t.term_type sub t1 t2 t
-    | TBinOp(Mult, t1, t2) -> signed_rule t.term_type Z.mul t1 t2 t
-    | TBinOp(Div, t1, t2) -> 
+    | TBinOp(Mult _, t1, t2) -> signed_rule t.term_type Z.mul t1 t2 t
+    | TBinOp(Div _, t1, t2) -> 
       let div a b = 
 	try Z.c_div a b 
 	with Division_by_zero -> 
@@ -294,7 +294,7 @@ let rec type_term t =
 	try Z.c_rem a b with Division_by_zero -> Z.zero (* see Div *)
       in
       signed_rule t.term_type modu t1 t2 t
-    | TBinOp(Shiftlt, _t1, _t2) | TBinOp(Shiftrt, _t1, _t2) ->
+    | TBinOp(Shiftlt _, _t1, _t2) | TBinOp(Shiftrt, _t1, _t2) ->
       Error.not_yet "left/right shift"
     | TBinOp((Lt | Gt | Le | Ge | Eq | Ne | LAnd | LOr), t1, t2) -> 
       let ty1 = type_term t1 in
@@ -303,7 +303,7 @@ let rec type_term t =
       ty, join ty (join ty1 ty2)
     | TBinOp((BAnd | BXor | BOr), _t1, _t2) -> 
       Error.not_yet "missing binary bitwise operator"
-    | TCastE(ty, t) -> 
+    | TCastE(ty, _, t) -> 
       let ty_t = type_term t in
       let ty_c = eacsl_typ_of_typ ty in
       let ty = try meet ty_c ty_t with Cannot_compare -> ty_c in

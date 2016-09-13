@@ -64,22 +64,22 @@ let name_of_binop = function
   | BXor -> "bxor"
   | BAnd -> "band"
   | Shiftrt -> "shiftr"
-  | Shiftlt -> "shiftl"
+  | Shiftlt _ -> "shiftl"
   | Mod -> "mod"
-  | Div -> "div"
-  | Mult -> "mul"
-  | PlusA -> "add"
-  | MinusA -> "sub"
+  | Div _ -> "div"
+  | Mult _ -> "mul"
+  | PlusA _ -> "add"
+  | MinusA _ -> "sub"
   | MinusPP | MinusPI | IndexPI | PlusPI -> assert false
 
 let name_of_mpz_arith_bop = function
-  | PlusA -> "__gmpz_add"
-  | MinusA -> "__gmpz_sub"
-  | Mult -> "__gmpz_mul"
-  | Div -> "__gmpz_tdiv_q"
+  | PlusA _ -> "__gmpz_add"
+  | MinusA _ -> "__gmpz_sub"
+  | Mult _ -> "__gmpz_mul"
+  | Div _ -> "__gmpz_tdiv_q"
   | Mod -> "__gmpz_tdiv_r"
   | Lt | Gt | Le | Ge | Eq | Ne | BAnd | BXor | BOr | LAnd | LOr
-  | Shiftlt | Shiftrt | PlusPI | IndexPI | MinusPI | MinusPP -> assert false
+  | Shiftlt _ | Shiftrt | PlusPI | IndexPI | MinusPI | MinusPP -> assert false
 
 let constant_to_exp ~loc = function
   | Integer(n, repr) ->
@@ -147,7 +147,7 @@ let cast_integer_to_float lty lty_t e =
     if not correct  then
       Options.warning
         "casting an integer to a long double without verification";
-    Cil.mkCast ~force:false ~e ~newt:ty
+    Cil.mkCast ?overflow:None ~force:false ~e ~newt:ty
   else
     e
 
@@ -207,12 +207,12 @@ and context_insensitive_term_to_exp kf env t =
     let ctx = match t.term_type with Ctype ty -> ty | _ -> assert false in
     let e, env = term_to_exp kf env (Some ctx) t in
     Cil.new_exp ~loc (AlignOfE e), env, false, "alignof"
-  | TUnOp(Neg | BNot as op, t') ->
+  | TUnOp(Neg _ | BNot as op, t') ->
     let ty = Typing.typ_of_term_operation t in
     let e, env = term_to_exp kf env (Some ty) t' in
     if Mpz.is_t ty then
       let name, vname = match op with
-	| Neg -> "__gmpz_neg", "neg"
+	| Neg _ -> "__gmpz_neg", "neg"
 	| BNot -> "__gmpz_com", "bnot"
 	| LNot -> assert false
       in
@@ -241,7 +241,7 @@ and context_insensitive_term_to_exp kf env t =
       let e, env = term_to_exp kf env None t in
       Cil.new_exp ~loc (UnOp(LNot, e, Cil.intType)), env, false, ""
     end
-  | TBinOp(PlusA | MinusA | Mult as bop, t1, t2) ->
+  | TBinOp(PlusA _ | MinusA _ | Mult _ as bop, t1, t2) ->
     let ty = Typing.typ_of_term_operation t in
     let ctx = Some ty in
     let e1, env = term_to_exp kf env ctx t1 in
@@ -262,7 +262,7 @@ and context_insensitive_term_to_exp kf env t =
         let e1 = cast_integer_to_float t.term_type t1.term_type e1 in
         let e2 = cast_integer_to_float t.term_type t2.term_type e2 in
         Cil.new_exp ~loc (BinOp(bop, e1, e2, ty)),  env, false, ""
-  | TBinOp(Div | Mod as bop, t1, t2) ->
+  | TBinOp(Div _ | Mod as bop, t1, t2) ->
     let ty = Typing.typ_of_term_operation t in
     let ctx = Some ty in
     let e1, env = term_to_exp kf env ctx t1 in
@@ -313,7 +313,7 @@ and context_insensitive_term_to_exp kf env t =
     (* comparison operators *)
     let e, env = comparison_to_exp ~loc kf env bop t1 t2 (Some t) in
     e, env, false, ""
-  | TBinOp((Shiftlt | Shiftrt), _, _) ->
+  | TBinOp((Shiftlt _ | Shiftrt), _, _) ->
     (* left/right shift *)
     not_yet env "left/right shift"
   | TBinOp(LOr, t1, t2) ->
@@ -353,7 +353,7 @@ and context_insensitive_term_to_exp kf env t =
     let e1, env = term_to_exp kf env ctx1 t1 in
     let e2, env = term_to_exp kf env ctx2 t2 in
     Cil.new_exp ~loc (BinOp(bop, e1, e2, ty)), env, false, ""
-  | TCastE(ty, t) ->
+  | TCastE(ty, _, t) ->
     let e, env = term_to_exp kf env (Some ty) t in
     Cil.mkCast e ty, env, false, "cast"
   | TLogic_coerce _ -> assert false (* handle in [term_to_exp] *)

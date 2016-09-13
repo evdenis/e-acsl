@@ -77,7 +77,7 @@ let mk_call ~loc ?result fname args =
 	  | TPtr _, TArray _, _ -> assert false
 	  | _, _, _ -> arg
 	in
-	Cil.mkCast ~force:false ~newt:ty ~e)
+	Cil.mkCast ?overflow:None ~force:false ~newt:ty ~e)
       ty_params
       args
   in
