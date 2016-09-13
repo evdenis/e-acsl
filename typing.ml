@@ -358,6 +358,9 @@ let rec type_term t =
     | Tcomprehension _ -> Error.not_yet "tset comprehension"
     | Trange _ -> Error.not_yet "range"
     | Tlet _ -> Error.not_yet "let binding"
+    | TOffsetOf _ -> Error.not_yet "OffsetOf"
+    | Toffset_min _ -> Error.not_yet "offset_min"
+    | Toffset_max _ -> Error.not_yet "offset_max"
   in
 (*  Options.feedback "ADD %a --> %a" Printer.pp_term t pretty_eacsl_typ ty;*)
   Term_env.add t res;

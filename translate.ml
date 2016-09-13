@@ -404,6 +404,9 @@ and context_insensitive_term_to_exp kf env t =
   | Tcomprehension _ -> not_yet env "tset comprehension"
   | Trange _ -> not_yet env "range"
   | Tlet _ -> not_yet env "let binding"
+  | TOffsetOf _ -> not_yet env "OffsetOf"
+  | Toffset_min _ -> not_yet env "offset_min"
+  | Toffset_max _ -> not_yet env "offset_max"
 
 (* Convert an ACSL term into a corresponding C expression (if any) in the given
    environment. Also extend this environment in order to include the generating

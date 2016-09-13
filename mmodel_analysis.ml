@@ -298,6 +298,9 @@ module rec Transfer
     | Tinter _ -> Error.not_yet "set intersection"
     | Tcomprehension _ -> Error.not_yet "set comprehension"
     | Trange _ -> Error.not_yet "\\range"
+    | TOffsetOf _ -> Error.not_yet "OffsetOf"
+    | Toffset_min _ -> Error.not_yet "offset_min"
+    | Toffset_max _ -> Error.not_yet "offset_max"
 
   let register_object kf state_ref = object
     inherit Visitor.frama_c_inplace
@@ -315,11 +318,11 @@ module rec Transfer
     | Plet _ | Pforall _ | Pexists _ | Pat _ | Psubtype _ ->
       Cil.DoChildren
     method !vterm term = match term.term_node with
-    | Tbase_addr(_, t) | Toffset(_, t) | Tblock_length(_, t) ->
+    | Tbase_addr(_, t) | Toffset(_, t) | Tblock_length(_, t) | Toffset_min (_, t) | Toffset_max (_, t) ->
       state_ref := register_term kf !state_ref t;
       Cil.DoChildren
     | TConst _ | TSizeOf _ | TSizeOfStr _ | TAlignOf _  | Tnull | Ttype _ 
-    | Tempty_set -> 
+    | Tempty_set | TOffsetOf _ -> 
       (* no left-value inside inside: skip for efficiency *)
       Cil.SkipChildren
     | TUnOp _ | TBinOp _ | Ttypeof _ | TSizeOfE _
