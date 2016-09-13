@@ -281,7 +281,7 @@ class dup_functions_visitor prj = object (self)
     | _ -> false
 
   method !vglob_aux = function
-  | GVarDecl(vi, loc) | GFunDecl(_, vi, loc) | GFun({ svar = vi }, loc)
+  | GVarDecl(_, vi, loc) | GFun({ svar = vi }, loc)
       when self#is_unvariadic_function vi
 	&& not (Misc.is_library_loc loc) 
 	&& not (Cil.is_builtin vi)
@@ -298,10 +298,10 @@ class dup_functions_visitor prj = object (self)
     Cil_datatype.Varinfo.Hashtbl.add fct_tbl vi new_vi;
     Cil.DoChildrenPost
       (fun l -> match l with
-      | [ GVarDecl(vi, _) | GFunDecl(_, vi, _) | GFun({ svar = vi }, _) as g ]
+      | [ GVarDecl(_, vi, _) | GFun({ svar = vi }, _) as g ]
         ->
 	(match g with
-        | GFunDecl _ ->
+        | GVarDecl _ ->
 	  if not (Kernel_function.is_definition (Extlib.the self#current_kf))
             && vi.vname <> "malloc" && vi.vname <> "free" 
           then
@@ -335,7 +335,7 @@ if there are memory-related annotations.@]"
 	in
 	self#dup_libc g new_g
       | _ -> assert false)
-  | GVarDecl(_, loc) | GFunDecl(_, _, loc) | GFun(_, loc)
+  | GVarDecl(_, _, loc) | GFun(_, loc)
       when Misc.is_library_loc loc ->
     (match before_memory_model with
     | Before_gmp -> before_memory_model <- Gmp
@@ -344,7 +344,7 @@ if there are memory-related annotations.@]"
     | Code -> () (* still processing the GMP and memory model headers,
                     but reading some libc code *));
     Cil.JustCopy
-  | GVarDecl(vi, _) | GFunDecl(_, vi, _) | GFun({ svar = vi }, _)
+  | GVarDecl(_, vi, _) | GFun({ svar = vi }, _)
       when Cil.is_builtin vi ->
     self#next ();
     Cil.JustCopy

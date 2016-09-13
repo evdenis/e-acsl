@@ -2521,8 +2521,8 @@ $as_echo "$FRAMAC_VERSION" >&6; }
 
 VERSION_NUMBER=`echo $FRAMAC_VERSION | sed -n -e 's/[a-zA-Z]\+-\([0-9]\+\).*/\1/p'`
 EXTRA_VERSION_NUMBER=`echo $FRAMAC_VERSION | sed -n -e 's/[a-zA-Z]\+-[0-9]\+-\(.*\)/\1/p'`
-REQUIRED_NUMBER=20151002
-REQUIRED_NAME=Magnesium
+REQUIRED_NUMBER=20150201
+REQUIRED_NAME=Sodium
 
 case $FRAMAC_VERSION in
   # $REQUIRED_NAME-$REQUIRED_NUMBER+dev*)
