@@ -1,0 +1,148 @@
+###############################################################################
+# Preliminary notes:                                                          #
+# ------------------                                                          #
+# Mark "-": change with an impact for users (and possibly developers).        #
+# Mark "o": change with an impact for developers only.                        #
+# Mark "+": change for Frama-C-commits audience (not in html version)         #
+# Mark "*": bug fixed.                                                        #
+# Mark "!": change that can break compatibility with existing development.    #
+# '#nnn'   : BTS entry #nnn                                                   #
+# '#!nnn'  : BTS private entry #nnn                                           #
+# For compatibility with old change log formats:                              #
+# '#?nnn'  : OLD-BTS entry #nnn                                               #
+###############################################################################
+# Categories:
+#   E-ACSL: the Whole E-ACSL plug-in
+###############################################################################
+
+-* E-ACSL       [2016/01/15] Fix installation with custom --prefix.
+-* E-ACSL       [2016/01/05] Fix bug in the memory model that caused the
+	        tracked size of heap memory be computed incorrectly.
+-  E-ACSL       [2015/12/15] Added a convenience script e-acsl-gcc.sh for
+	        small runs of the E-ACSL plugin.
+-* E-ACSL       [2015/12/08] Fix bug #1817 about incorrect initialization of
+	        literal strings in global arrays with compound initializers.
+-* E-ACSL       [2015/11/06] Fix a crash occuring when using a recent libc
+	        while GMP headers provided by E-ACSL are used.
+
+########################
+Plugin E-ACSL 0.5 Sodium
+########################
+
+-  E-ACSL       [2015/06/01] Support of \freeable. Thus illegal calls to
+	        free (e.g. double free) are detected.
+-* E-ACSL       [2015/05/28] Fix types of \block_length and \offset.
+-  E-ACSL       [2015/05/27] Search .h in the E-ACSL memory model by
+	        default (easier to use declarations like __memory_size).
+-  E-ACSL       [2015/05/27] Compatibility with new Frama-C Sodium option
+	        -frama-c-stdlib.
+-* E-ACSL       [2015/04/28] Fix bug when using fopen.
+-* E-ACSL       [2015/03/06] Fix bugs #1636 and #1837 about scoping of literal
+	        strings.
+o  E-ACSL       [2014/12/17] Export a minimal API for other plug-ins.
+-* E-ACSL       [2014/10/27] Add a missing cast when translating an integral
+	        type used in a floating point/real context in an annotation.
+
+########################
+Plugin E-ACSL 0.4.1 Neon
+########################
+
+-* E-ACSL       [2014/08/05] Fix bug #1838 about memset.
+-* E-ACSL       [2014/08/05] Fix bug #1818 about initialization of globals.
+-* E-ACSL       [2014/08/04] Fix bug #1696 by clarifying the manual.
+-* E-ACSL       [2014/08/04] Fix bug #1831 about argc and argv.
+-* E-ACSL       [2014/07/19] Fix bug #1836 about one-off error when
+	        computing the block which a pointer points to.
+-* E-ACSL       [2014/07/08] Fix bug #1695 about using some part of the
+	        (Frama-C) libc which prevents linking of the generated C code.
+-* E-ACSL       [2014/05/21] Fix bug #1782 about incorrect URL in the
+	        documentation.
+-  E-ACSL       [2014/03/27] Remove spurious warnings when using type real
+	        numbers.
+-* E-ACSL       [2014/03/26] Fix bug #1692 about wrong localisation of
+	        some messages.
+-  E-ACSL       [2014/03/26] Remove a spurious warning when an annotated
+	        function is first declared, then defined.
+-* E-ACSL       [2014/03/26] Fix bug #1717 about instrumentation of
+	        labeled statements.
+-* E-ACSL       [2014/03/25] Fix bug #1716 with annotations in while(1).
+-* E-ACSL       [2014/03/25] Fix bug #1715 about -e-acsl-full-mmodel which
+	        generates incorrect code.
+-* E-ACSL       [2014/03/17] Fix bug #1700 about non-ISO empty struct.
+
+###############################
+Plugin E-ACSL 0.4 Neon_20140301
+###############################
+
+-* E-ACSL       [2014/01/28] Fix bug #1634 occuring in presence of static
+	        addresses.
+-* E-ACSL       [2013/09/26] Fix incorrectness which may occur in presence
+	        of aliasing.
+-* E-ACSL       [2013/09/25] Some loop invariants were tagged as "assertions".
+
+###################################
+Plugin E-ACSL 0.3 Fluorine_20130601
+###################################
+
+-  E-ACSL       [2013/09/18] More precise message for unsupported contract
+	        clauses.
+-  E-ACSL       [2013/09/18] Use GMP still less often.
+-* E-ACSL       [2013/09/18] Fix bug which may occur with divisions and modulos.
+-  E-ACSL       [2013/09/10] Improve ACSL contracts of the E-ACSL C library.
+-  E-ACSL       [2013/09/06] Support of loop invariants.
+-* E-ACSL       [2013/09/04] Fix bug when monitored global variables have
+	        initializers (bts #1478).
+-* E-ACSL       [2013/09/04] Fix bug when mixing -e-acsl-prepare and
+	        running E-ACSL in another project (bts #!1473).
+-* E-ACSL       [2013/06/26] Fix crash with typedef on pointer types.
+-  E-ACSL       [2013/06/21] Fewer unknown locations.
+-* E-ACSL       [2013/06/18] Fixed bug when generating RTEs on the E-ACSL
+	        generated project.
+-* E-ACSL       [2013/05/30] Fixed -e-acsl-debug n, with n >= 2.
+
+###################################
+Plugin E-ACSL 0.2 Fluorine_20130401
+###################################
+
+-  E-ACSL       [2013/01/09] New option -e-acsl-valid. By default, valid
+	        annotation are not translated anymore.
+-* E-ACSL       [2013/01/09] Fix bug when translating a postcondition of a
+	        function where the init state is the same than the final
+	        state (bts #!1300).
+-  E-ACSL       [2013/01/09] Support of undefined function with a contract.
+-  E-ACSL       [2012/12/20] Support of ghost variables and statements.
+-* E-ACSL       [2012/12/13] Fix bug with complex term left-values.
+-  E-ACSL       [2012/11/27] Support of \valid_read.
+-  E-ACSL       [2012/11/27] Prevent runtime errors in annotations, except
+	        uninitialized variables.
+-  E-ACSL       [2012/11/19] Support of floats in annotations. Approximate
+	        reals by floats.
+-  E-ACSL       [2012/10/25] Support of \valid.
+-  E-ACSL       [2012/10/25] Support of \initialized.
+-  E-ACSL       [2012/10/25] Support of \block_length.
+-  E-ACSL       [2012/10/25] Support of \offset.
+-  E-ACSL       [2012/10/25] Support of \base_addr.
+-* E-ACSL       [2012/09/13] Fix bug with very long ACSL integer constants.
+-  E-ACSL       [2012/06/27] Continue to convert the other pre/post-conditions
+	        even if one fails.
+-  E-ACSL       [2012/04/27] Improve ACSL spec of E-ACSL' C library.
+-* E-ACSL       [2012/01/27] Fix compilation bug when configuring with
+	        --enable-external.
+-  E-ACSL	[2012/01/25] Nicer generated variable names.
+-* E-ACSL       [2012/01/24] Fix bug with lazy operators in term position.
+-* E-ACSL       [2012/01/24] Fix bug with boolean.
+-* E-ACSL       [2012/01/24] Fix bug with negation and GMP integers.
+-* E-ACSL       [2012/01/24] Fix bug with conditional and GMP integers.
+-  E-ACSL       [2012/01/24] Function e_acsl_assert now consistent with
+	        standard assert.
+-  E-ACSL	[2012/01/23] Support of bitwise complementation.
+-  E-ACSL	[2012/01/20] Use GMP arithmetics only when required
+	        (i.e. mostly never in practice).
+
+###################################
+Plugin E-ACSL 0.1 Nitrogen_20111001
+###################################
+
+-  E-ACSL	[2012/01/06] First public release.
+
+###################################

@@ -1,0 +1,268 @@
+##########################################################################
+#                                                                        #
+#  This file is part of the Frama-C's E-ACSL plug-in.                    #
+#                                                                        #
+#  Copyright (C) 2012-2016                                               #
+#    CEA (Commissariat à l'énergie atomique et aux énergies              #
+#         alternatives)                                                  #
+#                                                                        #
+#  you can redistribute it and/or modify it under the terms of the GNU   #
+#  Lesser General Public License as published by the Free Software       #
+#  Foundation, version 2.1.                                              #
+#                                                                        #
+#  It is distributed in the hope that it will be useful,                 #
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of        #
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         #
+#  GNU Lesser General Public License for more details.                   #
+#                                                                        #
+#  See the GNU Lesser General Public License version 2.1                 #
+#  for more details (enclosed in the file license/LGPLv2.1).             #
+#                                                                        #
+##########################################################################
+
+#######################
+# Frama-C Environment #
+#######################
+
+# Do not use ?= to initialize both below variables
+# (fixed efficiency issue, see GNU Make manual, Section 8.11)
+ifndef FRAMAC_SHARE
+FRAMAC_SHARE  :=$(shell frama-c-config -print-share-path)
+endif
+ifndef FRAMAC_LIBDIR
+FRAMAC_LIBDIR :=$(shell frama-c-config -print-libpath)
+endif
+
+# OCAMLVERSION and HAS_OCAML312 are defined in Frama-C common Makefile but
+# cannot be used at this point. Unfortunatly cannot reuse the same variable name
+# here without introducing unexpected interaction with Frama-C compilation when
+# compiling it with --enable-external=e-acsl.
+EACSL_OCAMLVERSION 	?=@OCAMLVERSION@
+ifeq ($(findstring 3.12,$(EACSL_OCAMLVERSION)),)
+EACSL_HAS_OCAML312 = no
+else
+EACSL_HAS_OCAML312 = yes
+endif
+
+#########################
+# Plug-in configuration #
+#########################
+
+PLUGIN_DIR ?=.
+PLUGIN_ENABLE:=@ENABLE_E_ACSL@
+PLUGIN_DYNAMIC:=@DYNAMIC_E_ACSL@
+PLUGIN_NAME:=E_ACSL
+PLUGIN_CMO:= local_config \
+	options \
+	rte \
+	error \
+	misc \
+	mpz \
+	literal_strings \
+	mmodel_analysis \
+	dup_functions \
+	label \
+	env \
+	typing \
+	quantif \
+	translate \
+	loops \
+	visit \
+	main
+PLUGIN_HAS_MLI:=yes
+PLUGIN_DISTRIBUTED:=no
+
+PLUGIN_DISTRIB_EXTERNAL:= Makefile.in configure.ac configure
+PLUGIN_DISTRIB_BIN:=no
+
+###############
+# Local Flags #
+###############
+
+# Enable -warn-error in development mode, but not in distribution mode
+# Do not edit the line below: it is automatically set by 'make e-acsl-distrib'
+IS_DISTRIBUTED:=yes
+ifneq ($(IS_DISTRIBUTED),yes)
+ifeq ($(EACSL_HAS_OCAML312),yes)
+EACSL_DEV_FLAGS=-warn-error +a
+else
+EACSL_DEV_FLAGS=-warn-error A
+endif
+endif
+PLUGIN_BFLAGS:=$(EACSL_DEV_FLAGS)
+PLUGIN_OFLAGS:=$(EACSL_DEV_FLAGS)
+
+#######################
+# Local configuration #
+#######################
+
+PLUGIN_GENERATED:= $(PLUGIN_DIR)/local_config.ml
+
+EACSL_VERSION=$(shell $(SED) -e 's/\\(.*\\)/\\1/' VERSION)
+
+$(PLUGIN_DIR)/local_config.ml: $(PLUGIN_DIR)/Makefile.in VERSION
+	$(PRINT_MAKING) $@
+	$(RM) $@
+	$(ECHO) "(* This file was automatically generated from $<. Don't edit it. *)" >> $@
+	$(ECHO) "let version = \""$(EACSL_VERSION)"\"" >> $@
+	$(CHMOD_RO) $@
+
+###########
+# Testing #
+###########
+
+ifeq (@MAY_RUN_TESTS@,yes)
+
+PLUGIN_TESTS_DIRS:=e-acsl-reject e-acsl-runtime bts
+E_ACSL_TESTS: $(PLUGIN_DIR)/tests/test_config
+
+endif
+
+###########
+# Install #
+###########
+
+install::
+	$(PRINT_INSTALL) E-ACSL share files
+	$(MKDIR) $(FRAMAC_SHARE)/e-acsl
+	$(CP) $(E_ACSL_DIR)/share/e-acsl/*.[ch] $(FRAMAC_SHARE)/e-acsl
+	$(MKDIR) $(FRAMAC_SHARE)/e-acsl/memory_model
+	$(CP) $(E_ACSL_DIR)/share/e-acsl/memory_model/* \
+		$(FRAMAC_SHARE)/e-acsl/memory_model
+	$(PRINT_INSTALL) E-ACSL manuals
+	$(MKDIR) $(FRAMAC_SHARE)/manuals
+	$(CP) $(E_ACSL_DIR)/doc/manuals/e-acsl.pdf \
+	      $(E_ACSL_DIR)/doc/manuals/e-acsl-implementation.pdf \
+	      $(E_ACSL_DIR)/doc/manuals/e-acsl-manual.pdf \
+		$(FRAMAC_SHARE)/manuals
+	$(PRINT_INSTALL) E-ACSL scripts
+	$(MKDIR) $(BINDIR)
+	$(CP) $(E_ACSL_DIR)/scripts/e-acsl-gcc.sh $(BINDIR)/
+	$(PRINT_INSTALL) E-ACSL man pages
+	$(MKDIR) $(MANDIR)/man1
+	$(CP) $(E_ACSL_DIR)/man/e-acsl-gcc.sh.1 $(MANDIR)/man1/
+
+uninstall::
+	$(PRINT_RM) E-ACSL share files
+	$(RM) -r $(FRAMAC_SHARE)/e-acsl
+	$(PRINT_RM) E-ACSL manuals
+	$(RM) $(FRAMAC_SHARE)/manuals/e-acsl.pdf \
+	      $(FRAMAC_SHARE)/manuals/e-acsl-implementation.pdf \
+	      $(FRAMAC_SHARE)/manuals/e-acsl-manual.pdf
+	$(PRINT_RM) E-ACSL scripts
+	$(RM) $(BINDIR)/e-acsl-gcc.sh
+	$(PRINT_RM) man pages
+	$(RM) $(MANDIR)/man1/e-acsl-gcc.sh.1
+
+################################
+# Building source distribution #
+################################
+
+EXPORT	=e-acsl-$(EACSL_VERSION)
+
+DOC_FILES= doc/manuals/e-acsl-manual.pdf  \
+	doc/manuals/e-acsl.pdf doc/manuals/e-acsl-implementation.pdf
+
+EACSL_DISTRIB_FILES=\
+  $(filter-out \
+	$(wildcard *local_config.ml), $(wildcard *.ml)) \
+	$(wildcard *.mli) \
+	configure.ac Makefile.in \
+	doc/Changelog \
+	$(DOC_FILES) \
+	scripts/e-acsl-gcc.sh \
+	man/e-acsl-gcc.sh.1 \
+	share/e-acsl/*.[ch] \
+	share/e-acsl/memory_model/e_acsl_bittree.[ch] \
+	share/e-acsl/memory_model/e_acsl_mmodel*.[ch] \
+	tests/test_config.in \
+	tests/e-acsl-reject/test_config tests/e-acsl-reject/*.i \
+	tests/e-acsl-runtime/test_config tests/e-acsl-runtime/*.[ci] \
+	license/CEA_LGPL license/SPARETIMELABS \
+	license/headache_config.txt license/LGPLv2.1 \
+	INSTALL README VERSION .depend
+
+# BE CAREFUL: manually remove all *.ml* files which should not be released!
+e-acsl-distrib: .depend
+	$(PRINT_TAR) tmp-distrib
+	$(TAR) cf tmp.tar $(EACSL_DISTRIB_FILES)
+	$(PRINT_MAKING) export directories
+	$(MKDIR) $(EXPORT)
+	$(PRINT_UNTAR) tmp-distrib
+	cd $(EXPORT); \
+	  $(TAR) xf ../tmp.tar; autoconf; \
+	  $(SED) -i \
+	    -e 's/IS_DISTRIBUTED:=yes/IS_DISTRIBUTED:=yes/' Makefile.in; \
+	  $(RM) -rf autom4te.cache
+	$(PRINT_RM) tmp-distrib
+	$(RM) tmp.tar
+	$(PRINT_MAKING) test directories
+	for dir in $(EXPORT)/tests/*; do \
+	  if test -d $$dir; then \
+	    $(MKDIR) $$dir/result; \
+	    $(MKDIR) $$dir/oracle; \
+          fi \
+	done
+	$(PRINT_MAKING) archive
+	$(TAR) czf $(EXPORT).tar.gz $(EXPORT)
+	$(PRINT) Cleaning
+	$(RM) -fr $(EXPORT)
+
+WWW	?= /localhome/julien/frama-c/doc/www
+e-acsl-install-distrib: e-acsl-distrib
+	$(PRINT) Copying to website
+	$(CP) $(EXPORT).tar.gz $(WWW)/distrib/download/e-acsl
+	$(CP) $(DOC_FILES) $(WWW)/distrib/download/e-acsl
+	$(CP) doc/manuals/e-acsl-manual.pdf \
+	      $(WWW)/distrib/download/e-acsl/e-acsl-manual-$(EACSL_VERSION).pdf
+	$(CP) doc/manuals/e-acsl.pdf \
+	      $(WWW)/distrib/download/e-acsl/e-acsl-1.7.pdf
+	$(CP) doc/manuals/e-acsl-implementation.pdf \
+	      $(WWW)/distrib/download/e-acsl/e-acsl-implementation-$(EACSL_VERSION).pdf
+
+##########
+# Header #
+##########
+
+headers::
+	@echo "Applying Headers..."
+	headache -c license/headache_config.txt -h license/CEA_LGPL \
+		*.ml *.mli \
+		Makefile.in configure.ac \
+		share/e-acsl/*.[ch] share/e-acsl/*/*.[ch] scripts/*.sh
+	headache -c license/headache_config.txt -h license/SPARETIMELABS \
+		share/e-acsl/e_acsl_printf.h
+
+################
+# Generic part #
+################
+
+include $(FRAMAC_SHARE)/Makefile.dynamic
+
+####################
+# Testing (part 2) #
+####################
+
+ifeq (@MAY_RUN_TESTS@,yes)
+
+$(E_ACSL_DIR)/tests/test_config: $(E_ACSL_DIR)/tests/test_config.in \
+				$(E_ACSL_DIR)/Makefile
+	$(PRINT_MAKING) $@
+	$(SED) -e "s|@SEDCMD@|`which sed `|g" $< > $@
+
+endif
+
+#####################################
+# Regenerating the Makefile on need #
+#####################################
+
+ifeq ("$(FRAMAC_INTERNAL)","yes")
+CONFIG_STATUS_DIR:=$(FRAMAC_SRC)
+CONFIG_STATUS_DIR_DEP:=
+else
+CONFIG_STATUS_DIR:=$(E_ACSL_DIR)
+CONFIG_STATUS_DIR_DEP:=$(CONFIG_STATUS_DIR)/config.status
+endif
+
+$(E_ACSL_DIR)/Makefile: $(E_ACSL_DIR)/Makefile.in $(CONFIG_STATUS_DIR_DEP)
+	cd $(CONFIG_STATUS_DIR) && ./config.status
