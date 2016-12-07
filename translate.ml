@@ -375,7 +375,7 @@ and context_insensitive_term_to_exp kf env t =
     let e, env = conditional_to_exp loc ty e1 res2 res3 in
     e, env, false, ""
   | Tat(t, LogicLabel(_, label)) when label = "Here" -> 
-    let ctx = match t.term_type with Ctype ty -> ty | _ -> assert false in
+    let ctx = match t.term_type with Ctype ty -> ty | _ -> not_yet env "at on logical type" in
     let e, env = term_to_exp kf env (Some ctx) t in
     e, env, false, ""
   | Tat(t', label) ->
