@@ -34,7 +34,7 @@ let rename_alloc_function ~create bhv vi =
     let new_name =  "__e" ^ vi.vname in
     let kf =
       try Globals.Functions.find_by_name new_name
-      with Not_found -> assert false
+      with Not_found -> Options.fatal "Can't find function %s" new_name
     in
     if create then Cil.makeGlobalVar new_name vi.vtype
     else Cil.get_varinfo bhv (Globals.Functions.get_vi kf)
