@@ -303,7 +303,7 @@ class dup_functions_visitor prj = object (self)
 	(match g with
         | GVarDecl _ ->
 	  if not (Kernel_function.is_definition (Extlib.the self#current_kf))
-            && vi.vname <> "malloc" && vi.vname <> "free" 
+            && vi.vname <> "kmalloc" && vi.vname <> "kfree" 
           then
 	    Options.warning "@[annotating undefined function `%a':@ \
 the generated program may miss memory instrumentation@ \

@@ -20,12 +20,14 @@
 /*                                                                        */
 /**************************************************************************/
 
-#include <stdlib.h>
-#include <string.h>
-#include <stdbool.h>
+#include <linux/kernel.h>
+#include <linux/module.h>
+#include <linux/types.h>
+#include <linux/slab.h>
 #include "e_acsl_mmodel_api.h"
 #include "e_acsl_mmodel.h"
-#include "../e_acsl_printf.h"
+
+MODULE_LICENSE("GPL");
 
 // E-ACSL warnings {{{
 #define WARNING 0   // Output a warning message to stderr
@@ -42,9 +44,9 @@ static int warning_level = E_ACSL_WARNING;
 // based on the current warning level
 static void warning(const char* message) {
   if (warning_level != IGNORE) {
-    eprintf("warning: %s\n", message);
+    pr_warn("%s\n", message);
     if (warning_level == ERROR)
-      abort();
+      BUG();
   }
 }
 
@@ -102,9 +104,9 @@ void __init_args(int argc, char **argv) {
  * Warning: the return type is implicitly (struct _block*). */
 void* __store_block(void* ptr, size_t size) {
   struct _block * tmp;
-  assert(ptr != NULL);
-  tmp = malloc(sizeof(struct _block));
-  assert(tmp != NULL);
+  BUG_ON(ptr == NULL);
+  tmp = kmalloc(sizeof(struct _block), GFP_KERNEL);
+  BUG_ON(tmp == NULL);
   tmp->ptr = (size_t)ptr;
   tmp->size = size;
   tmp->init_ptr = NULL;
@@ -120,40 +122,42 @@ void* __store_block(void* ptr, size_t size) {
 /* remove the block starting at ptr */
 void __delete_block(void* ptr) {
   struct _block * tmp = __get_exact(ptr);
-  assert(tmp != NULL);
+  BUG_ON(tmp == NULL);
   __clean_init(tmp);
   __remove_element(tmp);
-  free(tmp);
+  kfree(tmp);
 }
 
 /* allocate size bytes and store the returned block
- * for further information, see malloc */
-void* __malloc(size_t size) {
+ * for further information, see kmalloc */
+void* __ekmalloc(size_t size, gfp_t t) {
   void * tmp;
   struct _block * new_block;
   if(size <= 0) return NULL;
-  tmp = malloc(size);
+  tmp = kmalloc(size, t);
   if(tmp == NULL) return NULL;
   new_block = __store_block(tmp, size);
   __memory_size += size;
-  assert(new_block != NULL && (void*)new_block->ptr != NULL);
+  BUG_ON(new_block == NULL || (void*)new_block->ptr == NULL);
   new_block->freeable = true;
   return (void*)new_block->ptr;
 }
+EXPORT_SYMBOL_GPL(__ekmalloc);
 
-/* free the block starting at ptr,
- * for further information, see free */
-void __free(void* ptr) {
+/* kfree the block starting at ptr,
+ * for further information, see kfree */
+void __ekfree(void* ptr) {
   struct _block * tmp;
   if(ptr == NULL) return;
   tmp = __get_exact(ptr);
-  assert(tmp != NULL);
-  free(ptr);
+  BUG_ON(tmp == NULL);
+  kfree(ptr);
   __clean_init(tmp);
   __memory_size -= tmp->size;
   __remove_element(tmp);
-  free(tmp);
+  kfree(tmp);
 }
+EXPORT_SYMBOL_GPL(__ekfree);
 
 int __freeable(void* ptr) {
   struct _block * tmp;
@@ -164,18 +168,18 @@ int __freeable(void* ptr) {
 }
 
 /* resize the block starting at ptr to fit its new size,
- * for further information, see realloc */
-void* __realloc(void* ptr, size_t size) {
+ * for further information, see krealloc */
+void* __ekrealloc(void* ptr, size_t size, gfp_t t) {
   struct _block * tmp;
   void * new_ptr;
-  if(ptr == NULL) return __malloc(size);
+  if(ptr == NULL) return __ekmalloc(size, t);
   if(size == 0) {
-    __free(ptr);
+    __ekfree(ptr);
     return NULL;
   }
   tmp = __get_exact(ptr);
-  assert(tmp != NULL);
-  new_ptr = realloc((void*)tmp->ptr, size);
+  BUG_ON(tmp == NULL);
+  new_ptr = krealloc((void*)tmp->ptr, size, t);
   if(new_ptr == NULL) return NULL;
   __memory_size -= tmp->size;
   tmp->ptr = (size_t)new_ptr;
@@ -183,14 +187,14 @@ void* __realloc(void* ptr, size_t size) {
   if(tmp->init_cpt == 0) ;
   /* already fully initialized block */
   else if (tmp->init_cpt == tmp->size) {
-    /* realloc smaller block */
+    /* krealloc smaller block */
     if(size <= tmp->size)
       /* adjust new size, allocation not necessary */
       tmp->init_cpt = size;
-    /* realloc bigger larger block */
+    /* krealloc bigger larger block */
     else {
       int nb = needed_bytes(size);
-      tmp->init_ptr = malloc(nb);
+      tmp->init_ptr = kmalloc(nb, t);
       __e_acsl_mmodel_memset(tmp->init_ptr, 0xFF, nb);
       if(size%8 != 0)
 	tmp->init_ptr[size/8] <<= (8 - size%8);
@@ -201,14 +205,14 @@ void* __realloc(void* ptr, size_t size) {
     int nb = needed_bytes(size);
     int nb_old = needed_bytes(tmp->size);
     int i;
-    tmp->init_ptr = realloc(tmp->init_ptr, nb);
+    tmp->init_ptr = krealloc(tmp->init_ptr, nb, t);
     for(i = nb_old; i < nb; i++)
       tmp->init_ptr[i] = 0;
     tmp->init_cpt = 0;
     for(i = 0; i < nb; i++)
       tmp->init_cpt += nbr_bits_to_1[tmp->init_ptr[i]];
     if(tmp->init_cpt == size || tmp->init_cpt == 0) {
-      free(tmp->init_ptr);
+      kfree(tmp->init_ptr);
       tmp->init_ptr = NULL;
     }
   }
@@ -217,22 +221,24 @@ void* __realloc(void* ptr, size_t size) {
   __memory_size += size;
   return (void*)tmp->ptr;
 }
+EXPORT_SYMBOL_GPL(__ekrealloc);
 
 /* allocate memory for an array of nbr_block elements of size_block size,
  * this memory is set to zero, the returned block is stored,
- * for further information, see calloc */
-void* __calloc(size_t nbr_block, size_t size_block) {
+ * for further information, see kcalloc */
+void* __ekcalloc(size_t nbr_block, size_t size_block, gfp_t t) {
   void * tmp;
   struct _block * new_block;
   if(nbr_block * size_block <= 0) return NULL;
-  tmp = calloc(nbr_block, size_block);
+  tmp = kcalloc(nbr_block, size_block, t);
   if(tmp == NULL) return NULL;
   new_block = __store_block(tmp, nbr_block * size_block);
   __memory_size += nbr_block * size_block;
-  assert(new_block != NULL && (void*)new_block->ptr != NULL);
+  BUG_ON(new_block == NULL || (void*)new_block->ptr == NULL);
   new_block->freeable = true;
   return (void*)new_block->ptr;
 }
+EXPORT_SYMBOL_GPL(__ekcalloc);
 
 /* mark the size bytes of ptr as initialized */
 void __initialize (void * ptr, size_t size) {
@@ -241,7 +247,7 @@ void __initialize (void * ptr, size_t size) {
 
   return_warning(ptr == NULL, "initialize");
 
-  assert(size > 0);
+  BUG_ON(size == 0);
   tmp = __get_cont(ptr);
 
   return_warning(tmp == NULL, "initialize");
@@ -252,7 +258,7 @@ void __initialize (void * ptr, size_t size) {
   /* fully uninitialized */
   if(tmp->init_cpt == 0) {
     int nb = needed_bytes(tmp->size);
-    tmp->init_ptr = malloc(nb);
+    tmp->init_ptr = kmalloc(nb, GFP_KERNEL);
     __e_acsl_mmodel_memset(tmp->init_ptr, 0, nb);
   }
 
@@ -266,7 +272,7 @@ void __initialize (void * ptr, size_t size) {
 
   /* now fully initialized */
   if(tmp->init_cpt == tmp->size) {
-    free(tmp->init_ptr);
+    kfree(tmp->init_ptr);
     tmp->init_ptr = NULL;
   }
 }
@@ -280,7 +286,7 @@ void __full_init (void * ptr) {
   return_warning(tmp == NULL, "full_init");
 
   if (tmp->init_ptr != NULL) {
-    free(tmp->init_ptr);
+    kfree(tmp->init_ptr);
     tmp->init_ptr = NULL;
   }
 
@@ -299,8 +305,8 @@ void __literal_string (void * ptr) {
 /* return whether the size bytes of ptr are initialized */
 int __initialized (void * ptr, size_t size) {
   unsigned i;
-  assert(size > 0);
   struct _block * tmp = __get_cont(ptr);
+  BUG_ON(size == 0);
   if(tmp == NULL)
     return false;
 
@@ -318,11 +324,12 @@ int __initialized (void * ptr, size_t size) {
   }
   return true;
 }
+EXPORT_SYMBOL_GPL(__initialized);
 
 /* return the length (in bytes) of the block containing ptr */
 size_t __block_length(void* ptr) {
   struct _block * tmp = __get_cont(ptr);
-  assert(tmp != NULL);
+  BUG_ON(tmp == NULL);
   return tmp->size;
 }
 
@@ -337,6 +344,7 @@ int __valid(void* ptr, size_t size) {
     false : ( tmp->size - ( (size_t)ptr - tmp->ptr ) >= size
 	      && !tmp->is_litteral_string && !tmp->is_out_of_bound);
 }
+EXPORT_SYMBOL_GPL(__valid);
 
 /* return whether the size bytes of ptr are readable */
 int __valid_read(void* ptr, size_t size) {
@@ -349,24 +357,25 @@ int __valid_read(void* ptr, size_t size) {
     false : ( tmp->size - ( (size_t)ptr - tmp->ptr ) >= size
 	      && !tmp->is_out_of_bound);
 }
+EXPORT_SYMBOL_GPL(__valid_read);
 
 /* return the base address of the block containing ptr */
 void* __base_addr(void* ptr) {
   struct _block * tmp = __get_cont(ptr);
-  assert(tmp != NULL);
+  BUG_ON(tmp == NULL);
   return (void*)tmp->ptr;
 }
 
 /* return the offset of ptr within its block */
 int __offset(void* ptr) {
   struct _block * tmp = __get_cont(ptr);
-  assert(tmp != NULL);
+  BUG_ON(tmp == NULL);
   return ((size_t)ptr - tmp->ptr);
 }
 
 void __out_of_bound(void* ptr, _Bool flag) {
   struct _block * tmp = __get_cont(ptr);
-  assert(tmp != NULL);
+  BUG_ON(tmp == NULL);
   tmp->is_out_of_bound = flag;
 }
 
@@ -377,7 +386,7 @@ void __out_of_bound(void* ptr, _Bool flag) {
 /* print the information about a block */
 void __print_block (struct _block * ptr) {
   if (ptr != NULL) {
-    printf("%p; %zu Bytes; %slitteral; [init] : %li ",
+    pr_info("%p; %zu Bytes; %slitteral; [init] : %li ",
       (char*)ptr->ptr, ptr->size,
       ptr->is_litteral_string ? "" : "not ", ptr->init_cpt);
     if(ptr->init_ptr != NULL) {
@@ -385,10 +394,10 @@ void __print_block (struct _block * ptr) {
       for(i = 0; i < ptr->size; i++) {
         int ind = i / 8;
         int one_bit = (unsigned)1 << (8 - (i % 8) - 1);
-        printf("%i", (ptr->init_ptr[ind] & one_bit) != 0);
+        pr_info("%i", (ptr->init_ptr[ind] & one_bit) != 0);
       }
     }
-    printf("\n");
+    pr_info("\n");
   }
 }
 
@@ -399,18 +408,20 @@ void __print_block (struct _block * ptr) {
 /* erase information about initialization of a block */
 void __clean_init (struct _block * ptr) {
   if(ptr->init_ptr != NULL) {
-    free(ptr->init_ptr);
+    kfree(ptr->init_ptr);
     ptr->init_ptr = NULL;
   }
   ptr->init_cpt = 0;
 }
 
+
 /* erase all information about a block */
 void __clean_block (struct _block * ptr) {
   if(ptr == NULL) return;
   __clean_init(ptr);
-  free(ptr);
+  kfree(ptr);
 }
+
 
 /* erase the content of the abstract structure */
 void __e_acsl_memory_clean() {
@@ -422,6 +433,6 @@ void __e_acsl_memory_clean() {
 /**********************/
 
 /* print the content of the abstract structure */
-void __debug() {
+void __debug(void) {
   __debug_struct();
 }

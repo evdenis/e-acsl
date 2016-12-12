@@ -20,9 +20,11 @@
 /*                                                                        */
 /**************************************************************************/
 
+#include <linux/kernel.h>
+#include <linux/module.h>
 #include "e_acsl.h"
-#include <stdlib.h>
-#include <stdio.h>
+
+MODULE_LICENSE("GPL");
 
 void e_acsl_assert(int predicate, 
 		   char *kind, 
@@ -31,9 +33,10 @@ void e_acsl_assert(int predicate,
 		   int line) 
 {
   if (! predicate) {
-    printf("%s failed at line %d in function %s.\n\
+    pr_warn("%s failed at line %d in function %s.\n\
 The failing predicate is:\n%s.\n",
 	   kind, line, fct, pred_txt);
-    exit(1);
   }
 }
+
+EXPORT_SYMBOL_GPL(e_acsl_assert);

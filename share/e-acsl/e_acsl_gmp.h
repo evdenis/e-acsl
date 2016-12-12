@@ -27,7 +27,11 @@
 #ifndef E_ACSL_GMP
 #define E_ACSL_GMP
 
-#include "stdlib.h"
+#ifndef __KERNEL__
+#include <stddef.h>
+#else
+#include <linux/types.h>
+#endif
 #include "e_acsl_gmp_types.h"
 
 /****************/

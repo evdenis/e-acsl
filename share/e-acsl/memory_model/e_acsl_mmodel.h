@@ -23,19 +23,25 @@
 #ifndef E_ACSL_MMODEL
 #define E_ACSL_MMODEL
 
-#include "stdlib.h"
-#include "stdbool.h"
+#ifndef __KERNEL__
+#include <stddef.h>
+typedef unsigned gfp_t;
+#else
+#include <linux/kernel.h>
+#include <linux/slab.h>
+#include <linux/types.h>
+#endif
 
 /* allocate size bytes and store the returned block
- * for further information, see malloc */
+ * for further information, see kmalloc */
 /*@ assigns \result \from size; */
-void * __malloc(size_t size)
+void * __ekmalloc(size_t size, gfp_t f)
   __attribute__((FC_BUILTIN)) ;
 
-/* free the block starting at ptr,
- * for further information, see free */
+/* kfree the block starting at ptr,
+ * for further information, see kfree */
 /*@ assigns *((char*)ptr) \from ptr; */
-void __free(void * ptr)
+void __ekfree(void * ptr)
   __attribute__((FC_BUILTIN));
 
 /*@ assigns \result \from ptr; */
@@ -43,16 +49,16 @@ int __freeable(void * ptr)
   __attribute__((FC_BUILTIN));
 
 /* resize the block starting at ptr to fit its new size,
- * for further information, see realloc */
+ * for further information, see krealloc */
 /*@ assigns \result \from *(((char*)ptr)+(0..size-1)); */
-void * __realloc(void * ptr, size_t size)
+void * __ekrealloc(void * ptr, size_t size, gfp_t f)
   __attribute__((FC_BUILTIN));
 
 /* allocate memory for an array of nbr_block elements of size_block size,
  * this memory is set to zero, the returned block is stored,
- * for further information, see calloc */
+ * for further information, see kcalloc */
 /*@ assigns \result \from nbr_elt,size_elt; */
-void * __calloc(size_t nbr_elt, size_t size_elt)
+void * __ekcalloc(size_t nbr_elt, size_t size_elt, gfp_t t)
   __attribute__((FC_BUILTIN));
 
 /* From outside the library, the following functions have no side effect */

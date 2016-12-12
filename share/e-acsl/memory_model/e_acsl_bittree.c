@@ -20,15 +20,13 @@
 /*                                                                        */
 /**************************************************************************/
 
-#include <errno.h>
-#include <unistd.h>
-#include "stdlib.h"
-#include "stdbool.h"
-#include "math.h"
+//#include <errno.h>
+#include <linux/kernel.h>
+#include <linux/types.h>
+#include <linux/slab.h>
 #include "e_acsl_mmodel_api.h"
 #include "e_acsl_bittree.h"
 #include "e_acsl_mmodel.h"
-#include "../e_acsl_printf.h"
 
 #if WORDBITS == 16
 
@@ -131,7 +129,7 @@ size_t mask(size_t a, size_t b) {
 
   //@ assert -WORDBITS <= i <= 0;
   ret = Tmasks[-i];
-  assert ((a & ret) == (b & ret));
+  BUG_ON(!((a & ret) == (b & ret)));
   return ret;
 }
 
@@ -146,16 +144,16 @@ size_t mask(size_t a, size_t b) {
   @*/
 struct bittree * __get_leaf_from_block (struct _block * ptr) {
   struct bittree * curr = __root;
-  assert(__root != NULL);
-  assert(ptr != NULL);
+  BUG_ON(__root == NULL);
+  BUG_ON(ptr == NULL);
 
   /*@ loop assigns curr;
     @*/
   while(!curr->is_leaf) {
     // the prefix is consistent
-    assert((curr->addr & curr->mask) == (ptr->ptr & curr->mask));
+    BUG_ON(!((curr->addr & curr->mask) == (ptr->ptr & curr->mask)));
     // two sons
-    assert(curr->left != NULL && curr->right != NULL);
+    BUG_ON(curr->left == NULL || curr->right == NULL);
     // the prefix of one son is consistent
     if((curr->right->addr & curr->right->mask)
        == (ptr->ptr & curr->right->mask))
@@ -164,10 +162,10 @@ struct bittree * __get_leaf_from_block (struct _block * ptr) {
 	    == (ptr->ptr & curr->left->mask))
       curr = curr->left;
     else
-      assert(0);
+      BUG();
   }
-  assert(curr->is_leaf);
-  assert(curr->leaf == ptr);
+  BUG_ON(curr->is_leaf == 0);
+  BUG_ON(curr->leaf != ptr);
   return curr;
 }
 
@@ -178,7 +176,7 @@ struct bittree * __get_leaf_from_block (struct _block * ptr) {
   @*/
 void __remove_element (struct _block * ptr) {
   struct bittree * leaf_to_delete = __get_leaf_from_block (ptr);
-  assert(leaf_to_delete->leaf == ptr);
+  BUG_ON(leaf_to_delete->leaf != ptr);
 
   if(leaf_to_delete->father == NULL)
     // the leaf is the root
@@ -187,7 +185,7 @@ void __remove_element (struct _block * ptr) {
     struct bittree * brother, * father;
     father = leaf_to_delete->father;
     brother = (leaf_to_delete == father->left) ? father->right : father->left;
-    assert(brother != NULL);
+    BUG_ON(brother == NULL);
     // copying all brother's fields into the father's
     father->is_leaf = brother->is_leaf;
     father->addr = brother->addr;
@@ -199,7 +197,7 @@ void __remove_element (struct _block * ptr) {
       brother->left->father = father;
       brother->right->father = father;
     }
-    free(brother);
+    kfree(brother);
     /* necessary ? -- begin */
     if(father->father != NULL) {
       father->father->mask = mask(father->father->left->addr
@@ -209,7 +207,7 @@ void __remove_element (struct _block * ptr) {
     }
     /* necessary ? -- end */
   }
-  free(leaf_to_delete);
+  kfree(leaf_to_delete);
 }
 
 
@@ -223,13 +221,13 @@ void __remove_element (struct _block * ptr) {
 struct bittree * __most_similar_node (struct _block * ptr) {
   struct bittree * curr = __root;
   size_t left_prefix, right_prefix;
-  assert(ptr != NULL);
-  assert(__root != NULL);
+  BUG_ON(ptr != NULL);
+  BUG_ON(__root != NULL);
 
   while(1) {
     if(curr->is_leaf)
       return curr;
-    assert(curr->left != NULL && curr->right != NULL);
+    BUG_ON(curr->left == NULL || curr->right == NULL);
     left_prefix = mask(curr->left->addr & curr->left->mask, ptr->ptr);
     right_prefix = mask(curr->right->addr & curr->right->mask, ptr->ptr);
     if(left_prefix > right_prefix)
@@ -248,10 +246,10 @@ struct bittree * __most_similar_node (struct _block * ptr) {
   @*/
 void __add_element (struct _block * ptr) {
   struct bittree * new_leaf;
-  assert(ptr != NULL);
+  BUG_ON(ptr == NULL);
 
-  new_leaf = malloc(sizeof(struct bittree));
-  assert(new_leaf != NULL);
+  new_leaf = kmalloc(sizeof(struct bittree), GFP_KERNEL);
+  BUG_ON(new_leaf == NULL);
   new_leaf->is_leaf = true;
   new_leaf->addr = ptr->ptr;
   new_leaf->mask = Tmasks[WORDBITS]; /* ~0ul */
@@ -265,9 +263,9 @@ void __add_element (struct _block * ptr) {
   else {
     struct bittree * brother = __most_similar_node (ptr), * father, * aux;
 
-    assert(brother != NULL);
-    father = malloc(sizeof(struct bittree));
-    assert(father != NULL);
+    BUG_ON(brother == NULL);
+    father = kmalloc(sizeof(struct bittree), GFP_KERNEL);
+    BUG_ON(father == NULL);
     father->is_leaf = false;
     father->addr = brother->addr & new_leaf->addr;
     /*father->mask = mask(brother->addr & brother->mask, ptr->ptr);*/
@@ -304,11 +302,10 @@ void __add_element (struct _block * ptr) {
       brother->mask = mask(brother->left->addr & brother->left->mask,
 			   brother->right->addr & brother->right->mask);
 
-    assert((father->left == brother && father->right == new_leaf)
-	   || (father->left == new_leaf && father->right == brother));
+    BUG_ON(!((father->left == brother && father->right == new_leaf)
+	   || (father->left == new_leaf && father->right == brother)));
   }
 }
-
 
 /* return the block B such as: begin addr of B == ptr if such a block exists,
    return NULL otherwise */
@@ -318,8 +315,8 @@ void __add_element (struct _block * ptr) {
   @*/
 struct _block * __get_exact (void * ptr) {
   struct bittree * tmp = __root;
-  assert(__root != NULL);
-  assert(ptr != NULL);
+  BUG_ON(__root == NULL);
+  BUG_ON(ptr == NULL);
 
   /*@ loop assigns tmp;
     @*/
@@ -327,7 +324,7 @@ struct _block * __get_exact (void * ptr) {
     // if the ptr we are looking for does not share the prefix of tmp
     if((tmp->addr & tmp->mask) != ((size_t)ptr & tmp->mask)) return NULL;
     // two sons
-    assert(tmp->left != NULL && tmp->right != NULL);
+    BUG_ON(tmp->left == NULL || tmp->right == NULL);
     // the prefix of one son is consistent
     if((tmp->right->addr & tmp->right->mask)
        == ((size_t)ptr & tmp->right->mask))
@@ -348,10 +345,10 @@ struct _block * __get_exact (void * ptr) {
    or NULL if such a block does not exist */
 struct _block * __get_cont (void * ptr) {
   struct bittree * tmp = __root;
-  if(__root == NULL || ptr == NULL) return NULL;
-
   struct bittree * t [WORDBITS];
   short ind = -1;
+
+  if(__root == NULL || ptr == NULL) return NULL;
 
   while(1) {
     if(tmp->is_leaf) {
@@ -380,7 +377,7 @@ struct _block * __get_cont (void * ptr) {
       }
     }
 
-    assert(tmp->left != NULL && tmp->right != NULL);
+    BUG_ON(tmp->left == NULL || tmp->right == NULL);
 
     /* the right child has the highest address, so we test it first */
     if(((size_t)tmp->right->addr & tmp->right->mask)
@@ -420,14 +417,14 @@ void __clean_rec (struct bittree * ptr) {
     __clean_rec(ptr->right);
     ptr->left = ptr->right = NULL;
   }
-  free(ptr);
+  kfree(ptr);
 }
 
 /* erase the content of the structure */
 void __clean_struct () {
   __clean_rec(__root);
   __root = NULL;
-  /*printf("%i &\n", cpt_mask);*/
+  /*pr_info("%i &\n", cpt_mask);*/
 }
 
 /*********************/
@@ -443,11 +440,11 @@ void __debug_rec (struct bittree * ptr, int depth) {
   if(ptr == NULL)
     return;
   for(i = 0; i < depth; i++)
-    printf("  ");
+    pr_debug("  ");
   if(ptr->is_leaf)
     __print_block(ptr->leaf);
   else {
-    printf("%p -- %p\n", (void*)ptr->mask, (void*)ptr->addr);
+    pr_debug("%p -- %p\n", (void*)ptr->mask, (void*)ptr->addr);
     __debug_rec(ptr->left, depth+1);
     __debug_rec(ptr->right, depth+1);
   }
@@ -457,7 +454,7 @@ void __debug_rec (struct bittree * ptr, int depth) {
 /*@ assigns \nothing;
   @*/
 void __debug_struct () {
-  printf("------------DEBUG\n");
+  pr_debug("------------DEBUG\n");
   __debug_rec(__root, 0);
-  printf("-----------------\n");
+  pr_debug("-----------------\n");
 }

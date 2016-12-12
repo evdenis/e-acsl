@@ -23,8 +23,18 @@
 #ifndef E_ACSL_MMODEL_API
 #define E_ACSL_MMODEL_API
 
-#include "stdlib.h"
-#include "stdbool.h"
+#ifndef __KERNEL__
+#include <stddef.h>
+#include <stdbool.h>
+#else
+#include <linux/kernel.h>
+
+#ifdef CONFIG_X86_64
+# define E_ACSL_MACHDEP x86_64
+#else
+# define E_ACSL_MACHDEP x86_32
+#endif
+#endif /* __KERNEL__ */
 
 #if E_ACSL_MACHDEP == x86_64
 #define WORDBITS 64

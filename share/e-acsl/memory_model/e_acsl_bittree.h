@@ -23,7 +23,11 @@
 #ifndef E_ACSL_BITTREE
 #define E_ACSL_BITTREE
 
-#include "stdlib.h"
+#ifndef __KERNEL__
+#include <stddef.h>
+#else
+#include <linux/types.h>
+#endif
 
 size_t mask(size_t, size_t);
 

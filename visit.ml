@@ -28,10 +28,10 @@ let dkey = Options.dkey_translation
 
 let rename_alloc_function ~create bhv vi =
   let is_alloc_name s =
-    s = "malloc" || s = "free" || s = "realloc" || s = "calloc"
+    s = "kmalloc" || s = "kfree" || s = "krealloc" || s = "kcalloc"
   in
   if is_alloc_name vi.vname then
-    let new_name =  "__" ^ vi.vname in
+    let new_name =  "__e" ^ vi.vname in
     let kf =
       try Globals.Functions.find_by_name new_name
       with Not_found -> assert false
