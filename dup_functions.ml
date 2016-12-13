@@ -157,10 +157,22 @@ let dup_funspec tbl bhv spec =
   end in
   Cil.visitCilFunspec o spec
 
+
+let gen_name name idnum =
+   if name = ""
+   then
+      let id = idnum + 1 in
+         ("__e_acsl_tmp_var_" ^ string_of_int (id), id)
+   else
+      (name, idnum)
+
 let dup_fundec loc spec bhv kf vi new_vi =
   new_vi.vdefined <- true;
   let formals = Kernel_function.get_formals kf in
-  let new_formals = List.map (fun vi -> Cil.copyVarinfo vi vi.vname) formals in
+  let idnum : int ref = ref 0 in
+  let new_formals = List.map (fun vi -> let (name, id) = gen_name vi.vname !idnum in
+                                             (idnum := id);
+                                             Cil.copyVarinfo vi name) formals in
   let res =
     let ty = Kernel_function.get_return_type kf in
     if Cil.isVoidType ty then None
