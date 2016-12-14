@@ -629,7 +629,17 @@ and named_predicate_content_to_exp ?name kf env p =
 	| Pvalid_read _ -> "valid_read"
 	| _ -> assert false
       in
-      mmodel_call_with_size ~loc kf name Cil.intType env t 
+      let ptyp = Cil.unrollType(Typing.typ_of_term(t)) in
+      let typ = match ptyp with
+                | TPtr(a,_) -> a
+                | _ -> assert false
+      in
+      let attr = Cil.typeAttrs typ in
+      if Cil.hasAttribute Cil.bitfield_attribute_name attr
+      then
+         not_yet env "Can't take address from variable with bitfield."
+      else
+         mmodel_call_with_size ~loc kf name Cil.intType env t
     in
     if !is_visiting_valid then begin
       (* we already transformed \valid(t) into \initialized(&t) && \valid(t):
