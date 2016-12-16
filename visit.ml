@@ -669,6 +669,8 @@ you must call function `%s' and `__e_acsl_memory_clean by yourself.@]"
           self#add_initializer loc old_ret new_ret;
           l
         | _ -> assert false)
+  | Asm(_) ->
+    Cil.SkipChildren
   | _ ->
     Cil.DoChildren
 
