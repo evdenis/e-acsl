@@ -210,6 +210,8 @@ let dup_global loc old_prj spec bhv kf vi new_vi =
   let name = vi.vname in
   Options.feedback ~dkey ~level:2 "entering in function %s" name;
   let fundec, return = dup_fundec loc spec bhv kf vi new_vi  in
+  fundec.svar.vinline <- true;
+  fundec.svar.vstorage <- Static;
   let fct = Definition(fundec, loc) in
   let new_spec = fundec.sspec in
   let new_kf = { fundec = fct; return_stmt = Some return; spec = new_spec } in
