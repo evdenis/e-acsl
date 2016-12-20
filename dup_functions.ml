@@ -253,7 +253,12 @@ class dup_functions_visitor prj = object (self)
       libc_decls <- new_g :: libc_decls;
       [ g ]
     end else
-      self#insert_libc [ g; new_g ]
+      match new_g with
+      | GFun({svar = vi}, loc) ->
+            let spec = Cil.empty_funspec () in
+            let new_g_decl = GVarDecl(spec, vi, loc) in
+            self#insert_libc [ new_g_decl; g; new_g ]
+      | _ -> assert false
 
   method private next () =
     match before_memory_model with
