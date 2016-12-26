@@ -378,7 +378,10 @@ you must call function `%s' and `__e_acsl_memory_clean by yourself.@]"
          (Annotations.funspec old_kf)
      with Not_found ->
        ());
-    Cil.DoChildrenPost(rename_alloc_function ~create:true self#behavior)
+    match self#current_func with
+    | Some fundec when Cil_datatype.Varinfo.equal fundec.svar vi ->
+      Cil.DoChildren
+    | _ -> Cil.DoChildrenPost(rename_alloc_function ~create:true self#behavior)
 
   method !vvrbl _vi =
     Cil.DoChildrenPost(rename_alloc_function ~create:false self#behavior)
