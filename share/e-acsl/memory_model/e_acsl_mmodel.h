@@ -29,6 +29,7 @@ typedef unsigned gfp_t;
 #else
 #include <linux/kernel.h>
 #include <linux/slab.h>
+#include <linux/slab_def.h>
 #include <linux/types.h>
 #endif
 
@@ -36,12 +37,24 @@ typedef unsigned gfp_t;
  * for further information, see kmalloc */
 /*@ assigns \result \from size; */
 void * __ekmalloc(size_t size, gfp_t f)
-  __attribute__((FC_BUILTIN)) ;
+  __attribute__((FC_BUILTIN));
+
+/*@ assigns \result \from s; */
+void * __ekmem_cache_alloc(struct kmem_cache *s, gfp_t gfpflags)
+  __attribute__((FC_BUILTIN));
 
 /* kfree the block starting at ptr,
  * for further information, see kfree */
 /*@ assigns *((char*)ptr) \from ptr; */
 void __ekfree(void * ptr)
+  __attribute__((FC_BUILTIN));
+
+/*@ assigns *((char*)ptr) \from ptr; */
+void __ekzfree(void * ptr)
+  __attribute__((FC_BUILTIN));
+
+/*@ assigns *((char*)objp) \from objp,cachep; */
+void __ekmem_cache_free(struct kmem_cache *cachep, void *objp)
   __attribute__((FC_BUILTIN));
 
 /*@ assigns \result \from ptr; */
@@ -60,6 +73,11 @@ void * __ekrealloc(void * ptr, size_t size, gfp_t f)
 /*@ assigns \result \from nbr_elt,size_elt; */
 void * __ekcalloc(size_t nbr_elt, size_t size_elt, gfp_t t)
   __attribute__((FC_BUILTIN));
+
+/*@ assigns \result \from size; */
+void * __ekzalloc(size_t size, gfp_t f)
+  __attribute__((FC_BUILTIN));
+
 
 /* From outside the library, the following functions have no side effect */
 

@@ -24,6 +24,7 @@
 #include <linux/module.h>
 #include <linux/types.h>
 #include <linux/slab.h>
+#include <linux/slab_def.h>
 #include "e_acsl_mmodel_api.h"
 #include "e_acsl_mmodel.h"
 
@@ -144,6 +145,34 @@ void* __ekmalloc(size_t size, gfp_t t) {
 }
 EXPORT_SYMBOL_GPL(__ekmalloc);
 
+void* __ekzalloc(size_t size, gfp_t t) {
+  void * tmp;
+  struct _block * new_block;
+  if(size <= 0) return NULL;
+  tmp = kzalloc(size, t);
+  if(tmp == NULL) return NULL;
+  new_block = __store_block(tmp, size);
+  __memory_size += size;
+  BUG_ON(new_block == NULL || (void*)new_block->ptr == NULL);
+  new_block->freeable = true;
+  return (void*)new_block->ptr;
+}
+EXPORT_SYMBOL_GPL(__ekzalloc);
+
+void * __ekmem_cache_alloc(struct kmem_cache *s, gfp_t gfpflags) {
+  void * tmp;
+  struct _block * new_block;
+  size_t size = s->object_size;
+  tmp = kmem_cache_alloc(s, gfpflags);
+  if(tmp == NULL) return NULL;
+  new_block = __store_block(tmp, size);
+  __memory_size += size;
+  BUG_ON(new_block == NULL || (void*)new_block->ptr == NULL);
+  new_block->freeable = true;
+  return (void*)new_block->ptr;
+}
+EXPORT_SYMBOL_GPL(__ekmem_cache_alloc);
+
 /* kfree the block starting at ptr,
  * for further information, see kfree */
 void __ekfree(void* ptr) {
@@ -158,6 +187,32 @@ void __ekfree(void* ptr) {
   kfree(tmp);
 }
 EXPORT_SYMBOL_GPL(__ekfree);
+
+void __ekzfree(void* ptr) {
+  struct _block * tmp;
+  if(ptr == NULL) return;
+  tmp = __get_exact(ptr);
+  BUG_ON(tmp == NULL);
+  kzfree(ptr);
+  __clean_init(tmp);
+  __memory_size -= tmp->size;
+  __remove_element(tmp);
+  kfree(tmp);
+}
+EXPORT_SYMBOL_GPL(__ekzfree);
+
+void __ekmem_cache_free(struct kmem_cache *cachep, void *objp) {
+  struct _block * tmp;
+  if(objp == NULL) return;
+  tmp = __get_exact(objp);
+  BUG_ON(tmp == NULL);
+  kmem_cache_free(cachep, objp);
+  __clean_init(tmp);
+  __memory_size -= tmp->size;
+  __remove_element(tmp);
+  kfree(tmp);
+}
+EXPORT_SYMBOL_GPL(__ekmem_cache_free);
 
 int __freeable(void* ptr) {
   struct _block * tmp;

@@ -28,7 +28,9 @@ let dkey = Options.dkey_translation
 
 let rename_alloc_function ~create bhv vi =
   let is_alloc_name s =
-    s = "kmalloc" || s = "kfree" || s = "krealloc" || s = "kcalloc"
+    s = "kmalloc" || s = "kfree" || s = "krealloc" || s = "kcalloc" ||
+    s = "kzalloc" || s = "kzfree" ||
+    s = "kmem_cache_alloc" || s = "kmem_cache_free"
   in
   if is_alloc_name vi.vname then
     let new_name =  "__e" ^ vi.vname in
