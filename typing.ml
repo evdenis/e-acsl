@@ -390,7 +390,7 @@ and type_term_lhost = function
     | No_integral (Ctype ty) ->
       (match Cil.unrollType ty with
       | TPtr(ty, _) | TArray(ty, _, _, _) -> eacsl_typ_of_typ ty
-      | _ -> assert false)
+      | _ -> Error.not_yet "unsupported type in type_term_lhost")
     | No_integral _ | Interv _ | Z -> assert false
 
 and type_term_offset = function
