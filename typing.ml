@@ -116,9 +116,7 @@ let join ty1 ty2 = match ty1, ty2 with
   | (No_integral _ as ty), (Interv _ | Z) -> 
     ty
   | No_integral _, No_integral _ ->
-    Options.fatal "cannot join %a and %a" 
-      pretty_eacsl_typ ty1 
-      pretty_eacsl_typ ty2
+    Error.not_yet "cannot join intervals of different types"
 
 let int_to_interv n = 
   let b = Z.of_int n in
