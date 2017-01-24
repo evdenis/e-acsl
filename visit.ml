@@ -26,21 +26,6 @@ open Cil_datatype
 
 let dkey = Options.dkey_translation
 
-let rename_alloc_function ~create bhv vi =
-  let is_alloc_name s =
-    s = "malloc" || s = "free" || s = "realloc" || s = "calloc"
-  in
-  if is_alloc_name vi.vname then
-    let new_name =  "__" ^ vi.vname in
-    let kf =
-      try Globals.Functions.find_by_name new_name
-      with Not_found -> assert false
-    in
-    if create then Cil.makeGlobalVar new_name vi.vtype
-    else Cil.get_varinfo bhv (Globals.Functions.get_vi kf)
-  else
-    vi
-
 let allocate_function env kf =
   List.fold_left
     (fun env vi -> 
@@ -85,21 +70,21 @@ class e_acsl_visitor prj generate = object (self)
 
   val mutable is_initializer = false
   (* Global flag set to [true] if a currently visited node
-    belongs to a global initializer and set to [false] otherwise *)
+     belongs to a global initializer and set to [false] otherwise *)
 
   val global_vars: init option Varinfo.Hashtbl.t = Varinfo.Hashtbl.create 7
   (* Hashtable mapping global variables (as Cil_type.varinfo) to their
-   initializers aiming to capture memory allocated by global variable
-   declarations and initilisation. At runtime the memory blocks corresponding
-   to space occupied by global are recorded via a call to
-   [__e_acsl_memory_init] instrumented before (almost) anything else in the
-   [main] function. Each variable stored by [global_vars] will be handled in
-   the body of [__e_acsl_memory_init] as follows:
-      __store_block(...); // Record a memory block used by the variable
-      __full_init(...);   // ... and mark it as initialized memory
+     initializers aiming to capture memory allocated by global variable
+     declarations and initilisation. At runtime the memory blocks corresponding
+     to space occupied by global are recorded via a call to
+     [__gen_e_acsl_globals_init] instrumented at the beginning of the
+     [main] function. Each variable stored by [global_vars] will be handled in
+     the body of [__gen_e_acsl_globals_init] as follows:
+     __e_acsl_store_block(...); // Record a memory block used by the variable
+     __e_acsl_full_init(...);   // ... and mark it as initialized memory
 
-    NOTE: In [global_vars] keys belong to the original project while values
-    belong to the new one *)
+     NOTE: In [global_vars] keys belong to the original project while values
+     belong to the new one *)
 
   method private reset_env () =
     function_env := Env.empty (self :> Visitor.frama_c_visitor)
@@ -109,12 +94,12 @@ class e_acsl_visitor prj generate = object (self)
        right place to do this: it is still before visiting, but after
        that the visitor internals reset all of them :-(. *)
     let cur = Project.current () in
-    let selection = 
-      State_selection.of_list 
+    let selection =
+      State_selection.of_list
         [ Options.Gmp_only.self; Options.Check.self; Options.Full_mmodel.self;
           Kernel.SignedOverflow.self; Kernel.UnsignedOverflow.self;
           Kernel.SignedDowncast.self; Kernel.UnsignedDowncast.self;
-          Kernel.Machdep.self ] 
+          Kernel.Machdep.self ]
     in
     if generate then Project.copy ~selection ~src:cur prj;
     Cil.DoChildrenPost
@@ -136,19 +121,19 @@ class e_acsl_visitor prj generate = object (self)
           if must_init then begin
             let build_initializer () =
               Options.feedback ~dkey ~level:2 "building global initializer.";
-              let return = 
+              let return =
                 Cil.mkStmt ~valid_sid:true (Return(None, Location.unknown))
               in
               let env = Env.push !function_env in
-              let stmts, env = 
+              let stmts, env =
                 Varinfo.Hashtbl.fold_sorted
-                  (fun old_vi i (stmts, env) -> 
+                  (fun old_vi i (stmts, env) ->
                     let new_vi = Cil.get_varinfo self#behavior old_vi in
                     (* [model] creates an initialization statement
-                    of the form [__full_init(...)]) for every global
-                    variable which needs to be tracked and is not a Frama-C
-                    builtin. Further the statement is appended to the provided
-                    list of statements ([blk]) *)
+                       of the form [__e_acsl_full_init(...)] for every global
+                       variable which needs to be tracked and is not a Frama-C
+                       builtin. Further the statement is appended to the
+                       provided list of statements ([blk]) *)
                     let model blk =
                       if Mmodel_analysis.must_model_vi old_vi then
                         let blk =
@@ -165,7 +150,7 @@ class e_acsl_visitor prj generate = object (self)
                     match i with
                     | None -> model stmts, env
                     | Some (CompoundInit _) -> assert false
-                    | Some (SingleInit e) -> 
+                    | Some (SingleInit e) ->
                       let _, env = self#literal_string env e in stmts, env)
                   global_vars
                   ([ return ], env)
@@ -180,7 +165,7 @@ class e_acsl_visitor prj generate = object (self)
                     Cil.mkStmtOneInstr ~valid_sid:true (Set(Cil.var vi, e, loc))
                     :: Misc.mk_store_stmt ~str_size vi
                     :: Misc.mk_full_init_stmt ~addr:false vi
-                    :: Misc.mk_literal_string vi
+                    :: Misc.mk_readonly vi
                     :: stmts)
                   stmts
               in
@@ -193,9 +178,9 @@ class e_acsl_visitor prj generate = object (self)
               function_env := env;
               let stmts = Cil.mkStmt ~valid_sid:true (Block b) :: stmts in
               let blk = Cil.mkBlock stmts in
-              (* Create [__e_acsl_memory_init] function with definition
+              (* Create [__e_acsl_globals_init] function with definition
                for initialization of global variables *)
-              let fname = "__e_acsl_memory_init" in
+              let fname = (Misc.mk_api_name "globals_init") in
               let vi =
                 Cil.makeGlobalVar ~source:true
                   fname
@@ -218,32 +203,33 @@ class e_acsl_visitor prj generate = object (self)
               in
               self#add_generated_variables_in_function fundec;
               let fct = Definition(fundec, Location.unknown) in
-             (* Create and register [__e_acsl_memory_init] as kernel function *)
+              (* Create and register [__e_acsl_globals_init] as kernel
+                 function *)
               let kf =
-                { fundec = fct; return_stmt = Some return; spec = spec } 
+                { fundec = fct; spec = spec }
               in
               Globals.Functions.register kf;
-              Globals.Functions.replace_by_definition 
+              Globals.Functions.replace_by_definition
                 spec fundec Location.unknown;
               let cil_fct = GFun(fundec, Location.unknown) in
               if Mmodel_analysis.use_model () then
                 match main_fct with
                 | Some main ->
                   let exp = Cil.evar ~loc:Location.unknown vi in
-                  (* Create [__e_acsl_memory_init();] call *)
-                  let stmt = 
-                    Cil.mkStmtOneInstr ~valid_sid:true 
+                  (* Create [__e_acsl_globals_init();] call *)
+                  let stmt =
+                    Cil.mkStmtOneInstr ~valid_sid:true
                       (Call(None, exp, [], Location.unknown))
                   in
                   vi.vreferenced <- true;
-                  (* Add [__e_acsl_memory_init();] call as the first statement
+                  (* Add [__e_acsl_globals_init();] call as the first statement
                    to the [main] function *)
                   main.sbody.bstmts <- stmt :: main.sbody.bstmts;
                   let new_globals =
                     List.fold_right
                       (fun g acc -> match g with
                       | GFun({ svar = vi }, _)
-                          when Varinfo.equal vi main.svar -> 
+                          when Varinfo.equal vi main.svar ->
                         acc
                       | _ -> g :: acc)
                       f.globals
@@ -258,58 +244,66 @@ class e_acsl_visitor prj generate = object (self)
                       new_globals
                   in
                   f.globals <- new_globals
-                | None -> 
+                | None ->
                   Kernel.warning "@[no entry point specified:@ \
-you must call function `%s' and `__e_acsl_memory_clean by yourself.@]" 
-                    fname;
+you must call function `__e_acsl_memory_init` by yourself.@]";
                   f.globals <- f.globals @ [ cil_fct ]
             in
             Project.on prj build_initializer ()
           end; (* must_init *)
-	  let must_init_args = match main_fct with
-	    | Some main ->
-	       let charPtrPtrType = TPtr(Cil.charPtrType,[]) in
-	       (* this might not be valid in an embedded environment,
-		  where int/char** arguments is not necessarily
-		  valid *)
-	       (match main.sformals with
-               | vi1 :: vi2 :: _ when
-                    vi1.vtype = Cil.intType
-                    && vi2.vtype = charPtrPtrType
-                      && Mmodel_analysis.must_model_vi vi2 -> true
-               | _ -> false)
-	    | None -> false
-	  in
-	  if must_init_args then begin
-	    (* init memory store, and then add program arguments if
-	       there are any. must be called before global variables
-	       are initialized. *)
-	    let build_args_initializer () =
-	      let main = Extlib.the main_fct in
-	      let loc = Location.unknown in
-              let args = List.map Cil.evar main.sformals in
-	      let call = Misc.mk_call loc "__init_args" args in
-	      main.sbody.bstmts <- call :: main.sbody.bstmts;
+          (* Add a call to "__e_acsl_memory_init" that initializes memory
+             storage and potentially records program arguments. Parameters to
+             the "__e_acsl_memory_init" are addresses of program arguments or
+             NULLs if main is declared without arguments. *)
+          let build_mmodel_initializer () =
+            let loc = Location.unknown in
+            let nulls = [ Cil.zero loc ; Cil.zero loc ] in
+            let handle_main main =
+              let args =
+                (* record arguments only if the second has a pointer type, so a
+                   argument strings can be recorded. This is sufficient to
+                   capture C99 compliant arguments and GCC extensions with
+                   environ. *)
+                match main.sformals with
+                | [] ->
+                  (* no arguments to main given *)
+                  nulls
+                | _argc :: argv :: _ when Cil.isPointerType argv.vtype ->
+                  (* grab addresses of arguments for a call to the main
+                     initialization function, i.e., [__e_acsl_memory_init] *)
+                  List.map Cil.mkAddrOfVi main.sformals;
+                | _ :: _ ->
+                  (* some non-standard arguments. *)
+                  nulls
+              in
+              let ptr_size = Cil.sizeOf loc Cil.voidPtrType in
+              let args = args @ [ ptr_size ] in
+              let init = Misc.mk_call loc (Misc.mk_api_name "memory_init") args in
+              main.sbody.bstmts <- init :: main.sbody.bstmts
             in
-            Project.on prj build_args_initializer ()
-	  end;
-	  (* reset copied states at the end to be observationally
-	     equivalent to a standard visitor. *)
-	  Project.clear ~selection ~project:prj ();
-	 end; (* generate *)
-	 f)
+            Extlib.may handle_main main_fct
+          in
+          if Mmodel_analysis.use_model () then
+            Project.on prj build_mmodel_initializer ();
+            (* reset copied states at the end to be observationally
+               equivalent to a standard visitor. *)
+          Project.clear ~selection ~project:prj ();
+        end; (* generate *)
+        f)
 
   method !vglob_aux = function
   | GVarDecl(vi, _) | GVar(vi, _, _)
   | GFunDecl(_, vi, _) | GFun({ svar = vi }, _)
-      when Misc.is_library_loc vi.vdecl ->
+      when Misc.is_library_loc vi.vdecl || Builtins.mem vi.vname ->
     if generate then
       Cil.JustCopyPost
-        (fun l -> 
-          Misc.register_library_function (Cil.get_varinfo self#behavior vi);
+        (fun l ->
+          let new_vi = Cil.get_varinfo self#behavior vi in
+          Misc.register_library_function new_vi;
+          Builtins.update vi.vname new_vi;
           l)
     else begin
-      Misc.register_library_function vi; 
+      Misc.register_library_function vi;
       Cil.SkipChildren
     end
   | GVarDecl(vi, _) | GVar(vi, _, _) | GFun({ svar = vi }, _)
@@ -323,6 +317,7 @@ you must call function `%s' and `__e_acsl_memory_clean by yourself.@]"
         vi.vghost <- false; ()
       | GFun({ svar = vi } as fundec, _) ->
         vi.vghost <- false;
+        Builtins.update vi.vname vi;
         (* remember that we have to remove the main later (see method
            [vfile]) *)
         if vi.vorig_name = Kernel.MainFunction.get () then
@@ -377,10 +372,7 @@ you must call function `%s' and `__e_acsl_memory_clean by yourself.@]"
          (Annotations.funspec old_kf)
      with Not_found ->
        ());
-    Cil.DoChildrenPost(rename_alloc_function ~create:true self#behavior)
-
-  method !vvrbl _vi =
-    Cil.DoChildrenPost(rename_alloc_function ~create:false self#behavior)
+    Cil.SkipChildren
 
   method private add_generated_variables_in_function f =
     assert generate;
@@ -587,7 +579,7 @@ you must call function `%s' and `__e_acsl_memory_clean by yourself.@]"
                       else
                         acc)
                     global_vars
-                    [ Misc.mk_call ~loc "__e_acsl_memory_clean" []; ret ]
+                    [ Misc.mk_call ~loc (Misc.mk_api_name "memory_clean") []; ret ]
                 in
                 b.bstmts <- List.rev l @ delete_stmts
             end;
@@ -747,7 +739,7 @@ you must call function `%s' and `__e_acsl_memory_clean by yourself.@]"
         | _ -> ());
         t)
 
-  method !vpredicate _ =
+  method !vpredicate_node _ =
     Cil.DoChildrenPost
       (function
       | Pat(_, StmtLabel s_ref) as p ->
@@ -765,6 +757,12 @@ you must call function `%s' and `__e_acsl_memory_clean by yourself.@]"
 end
 
 let do_visit ?(prj=Project.current ()) generate =
+  (* The main visitor proceeds by tracking declarations belonging to the
+     E-ACSL runtime library and then using these declarations to generate
+     statements used in instrumentation. The following code reorders AST 
+     so declarations belonging to E-ACSL library appear atop of any location 
+     requiring instrumentation. *)
+  Misc.reorder_ast ();  
   Options.feedback ~level:2 "%s annotations in %a." 
     (if generate then "translating" else "checking")
     Project.pretty prj;

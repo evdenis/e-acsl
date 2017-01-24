@@ -1,0 +1,36 @@
+[e-acsl] beginning translation.
+FRAMAC_SHARE/libc/stdlib.h:160:[kernel] warning: No code nor implicit assigns clause for function calloc, generating default assigns from the prototype
+[e-acsl] translation done in project "e-acsl".
+[value] Analyzing a complete application starting at main
+[value] Computing initial state
+[value] Initial state computed
+[value:initial-state] Values of globals at initialization
+  __fc_random_counter ∈ {0}
+  __fc_rand_max ∈ {32767}
+  __fc_heap_status ∈ [--..--]
+  __e_acsl_init ∈ [--..--]
+  __e_acsl_internal_heap ∈ [--..--]
+  __e_acsl_heap_allocation_size ∈ [--..--]
+tests/gmp/longlong.i:9:[value] warning: recursive call during value analysis
+                 of my_pow (my_pow <- my_pow :: tests/gmp/longlong.i:16 <- main).
+                 Using specification of my_pow.
+[value] user error: Recursive call on an unspecified function. Using potentially invalid
+                    inferred assigns 'assigns \result \from x, n;'
+[value] using specification for function my_pow
+tests/gmp/longlong.i:10:[value] warning: signed overflow. assert -2147483648 ≤ tmp * tmp;
+tests/gmp/longlong.i:10:[value] warning: signed overflow. assert tmp * tmp ≤ 2147483647;
+[value] using specification for function __gmpz_init_set_si
+[value] using specification for function __gmpz_init
+[value] using specification for function __gmpz_import
+FRAMAC_SHARE/e-acsl/e_acsl_gmp.h:99:[value] warning: function __gmpz_import: precondition got status unknown.
+[value] using specification for function __gmpz_mul
+[value] using specification for function __gmpz_add
+[value] using specification for function __gmpz_cmp
+[value] using specification for function __e_acsl_assert
+FRAMAC_SHARE/e-acsl/e_acsl.h:43:[value] warning: function __e_acsl_assert: precondition got status unknown.
+[value] using specification for function __gmpz_tdiv_r
+[value] using specification for function __gmpz_get_si
+tests/gmp/longlong.i:17:[value] warning: pointer comparison.
+                 assert \pointer_comparable((void *)__gen_e_acsl__4, (void *)1);
+[value] using specification for function __gmpz_clear
+[value] done for function main

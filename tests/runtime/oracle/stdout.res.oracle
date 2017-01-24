@@ -1,0 +1,12 @@
+[e-acsl] beginning translation.
+[e-acsl] warning: annotating undefined function `fopen':
+                  the generated program may miss memory instrumentation
+                  if there are memory-related annotations.
+FRAMAC_SHARE/libc/stdlib.h:160:[kernel] warning: No code nor implicit assigns clause for function calloc, generating default assigns from the prototype
+tests/runtime/stdout.c:10:[e-acsl] warning: E-ACSL construct `assigns clause in behavior' is not yet supported.
+                  Ignoring annotation.
+FRAMAC_SHARE/libc/stdio.h:108:[e-acsl] warning: E-ACSL construct `logic function application' is not yet supported.
+                  Ignoring annotation.
+[e-acsl] translation done in project "e-acsl".
+tests/runtime/stdout.c:10:[value] warning: assertion got status unknown.
+FRAMAC_SHARE/e-acsl/e_acsl.h:43:[value] warning: function __e_acsl_assert: precondition got status unknown.

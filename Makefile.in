@@ -3,7 +3,7 @@
 #  This file is part of the Frama-C's E-ACSL plug-in.                    #
 #                                                                        #
 #  Copyright (C) 2012-2016                                               #
-#    CEA (Commissariat à l'énergie atomique et aux énergies              #
+#    CEA (Commissariat Ã  l'Ã©nergie atomique et aux Ã©nergies              #
 #         alternatives)                                                  #
 #                                                                        #
 #  you can redistribute it and/or modify it under the terms of the GNU   #
@@ -29,9 +29,6 @@
 ifndef FRAMAC_SHARE
 FRAMAC_SHARE  :=$(shell frama-c-config -print-share-path)
 endif
-ifndef FRAMAC_LIBDIR
-FRAMAC_LIBDIR :=$(shell frama-c-config -print-libpath)
-endif
 
 # OCAMLVERSION and HAS_OCAML312 are defined in Frama-C common Makefile but
 # cannot be used at this point. Unfortunatly cannot reuse the same variable name
@@ -56,51 +53,44 @@ PLUGIN_CMO:= local_config \
 	options \
 	rte \
 	error \
+	builtins \
 	misc \
-	mpz \
+	gmpz \
 	literal_strings \
 	mmodel_analysis \
 	dup_functions \
 	label \
 	env \
+	interval \
 	typing \
 	quantif \
 	translate \
 	loops \
 	visit \
 	main
+
 PLUGIN_HAS_MLI:=yes
 PLUGIN_DISTRIBUTED:=no
 
 PLUGIN_DISTRIB_EXTERNAL:= Makefile.in configure.ac configure
 PLUGIN_DISTRIB_BIN:=no
 
+# We "save" this variable so that it can be used once PLUGIN_DIR has been reset
+EACSL_PLUGIN_DIR:=$(PLUGIN_DIR)
+
 ###############
 # Local Flags #
 ###############
-
-# Enable -warn-error in development mode, but not in distribution mode
 # Do not edit the line below: it is automatically set by 'make e-acsl-distrib'
 IS_DISTRIBUTED:=yes
-ifneq ($(IS_DISTRIBUTED),yes)
-ifeq ($(EACSL_HAS_OCAML312),yes)
-EACSL_DEV_FLAGS=-warn-error +a
-else
-EACSL_DEV_FLAGS=-warn-error A
-endif
-endif
-PLUGIN_BFLAGS:=$(EACSL_DEV_FLAGS)
-PLUGIN_OFLAGS:=$(EACSL_DEV_FLAGS)
 
 #######################
 # Local configuration #
 #######################
 
-PLUGIN_GENERATED:= $(PLUGIN_DIR)/local_config.ml
+PLUGIN_GENERATED:= $(EACSL_PLUGIN_DIR)/local_config.ml
 
-EACSL_VERSION=$(shell $(SED) -e 's/\\(.*\\)/\\1/' VERSION)
-
-$(PLUGIN_DIR)/local_config.ml: $(PLUGIN_DIR)/Makefile.in VERSION
+$(EACSL_PLUGIN_DIR)/local_config.ml: $(EACSL_PLUGIN_DIR)/Makefile.in $(EACSL_PLUGIN_DIR)/VERSION
 	$(PRINT_MAKING) $@
 	$(RM) $@
 	$(ECHO) "(* This file was automatically generated from $<. Don't edit it. *)" >> $@
@@ -113,74 +103,190 @@ $(PLUGIN_DIR)/local_config.ml: $(PLUGIN_DIR)/Makefile.in VERSION
 
 ifeq (@MAY_RUN_TESTS@,yes)
 
-PLUGIN_TESTS_DIRS:=e-acsl-reject e-acsl-runtime bts
-E_ACSL_TESTS: $(PLUGIN_DIR)/tests/test_config
+PLUGIN_TESTS_DIRS := reject runtime bts gmp no-main full-mmodel
+PLUGIN_TESTS_LIB := $(EACSL_PLUGIN_DIR)/tests/print.ml
+E_ACSL_TESTS: $(EACSL_PLUGIN_DIR)/tests/test_config
+
+E_ACSL_DEFAULT_TESTS: \
+	$(EACSL_PLUGIN_DIR)/tests/test_config \
+	$(EACSL_PLUGIN_DIR)/tests/print.cmxs \
+	$(EACSL_PLUGIN_DIR)/tests/print.cmo
+
+clean::
+	$(PRINT_RM) cleaning generated test files
+	$(RM) $(E_ACSL_DIR)/tests/*.cm* $(E_ACSL_DIR)/tests/*.o
+	$(RM) $(E_ACSL_DIR)/tests/test_config
+	$(RM) $(foreach dir, $(PLUGIN_TESTS_DIRS), tests/$(dir)/result/*)
 
 endif
 
-###########
-# Install #
-###########
+################################################
+# E-ACSL C Libs: libjemalloc, libgmp           #
+################################################
 
-install::
-	$(PRINT_INSTALL) E-ACSL share files
-	$(MKDIR) $(FRAMAC_SHARE)/e-acsl
-	$(CP) $(E_ACSL_DIR)/share/e-acsl/*.[ch] $(FRAMAC_SHARE)/e-acsl
-	$(MKDIR) $(FRAMAC_SHARE)/e-acsl/memory_model
-	$(CP) $(E_ACSL_DIR)/share/e-acsl/memory_model/* \
-		$(FRAMAC_SHARE)/e-acsl/memory_model
-	$(PRINT_INSTALL) E-ACSL manuals
-	$(MKDIR) $(FRAMAC_SHARE)/manuals
-	$(CP) $(E_ACSL_DIR)/doc/manuals/e-acsl.pdf \
-	      $(E_ACSL_DIR)/doc/manuals/e-acsl-implementation.pdf \
-	      $(E_ACSL_DIR)/doc/manuals/e-acsl-manual.pdf \
-		$(FRAMAC_SHARE)/manuals
-	$(PRINT_INSTALL) E-ACSL scripts
-	$(MKDIR) $(BINDIR)
-	$(CP) $(E_ACSL_DIR)/scripts/e-acsl-gcc.sh $(BINDIR)/
-	$(PRINT_INSTALL) E-ACSL man pages
-	$(MKDIR) $(MANDIR)/man1
-	$(CP) $(E_ACSL_DIR)/man/e-acsl-gcc.sh.1 $(MANDIR)/man1/
+EACSL_LIBDIR := $(EACSL_PLUGIN_DIR)/lib
+EACSL_JEMALLOC_DIR := $(EACSL_PLUGIN_DIR)/contrib/libjemalloc
+EACSL_JEMALLOC_LIBNAME = libeacsl-jemalloc.a
+EACSL_JEMALLOC_LIB = $(EACSL_LIBDIR)/$(EACSL_JEMALLOC_LIBNAME)
 
-uninstall::
-	$(PRINT_RM) E-ACSL share files
-	$(RM) -r $(FRAMAC_SHARE)/e-acsl
-	$(PRINT_RM) E-ACSL manuals
-	$(RM) $(FRAMAC_SHARE)/manuals/e-acsl.pdf \
-	      $(FRAMAC_SHARE)/manuals/e-acsl-implementation.pdf \
-	      $(FRAMAC_SHARE)/manuals/e-acsl-manual.pdf
-	$(PRINT_RM) E-ACSL scripts
-	$(RM) $(BINDIR)/e-acsl-gcc.sh
-	$(PRINT_RM) man pages
-	$(RM) $(MANDIR)/man1/e-acsl-gcc.sh.1
+$(EACSL_JEMALLOC_LIB):
+	cd $(EACSL_JEMALLOC_DIR) && $(MAKE) $(MAKEOPTS)
+	$(MKDIR) $(EACSL_LIBDIR)
+	$(CP) $(EACSL_JEMALLOC_DIR)/lib/libjemalloc.a $@
+
+EACSL_GMP_DIR := $(EACSL_PLUGIN_DIR)/contrib/libgmp
+EACSL_GMP_LIBNAME = libeacsl-gmp.a
+EACSL_GMP_LIB = $(EACSL_LIBDIR)/$(EACSL_GMP_LIBNAME)
+EACSL_GMP_DIR := $(EACSL_PLUGIN_DIR)/contrib/libgmp
+EACSL_GMP_MINI = mini-gmp.o
+
+ifeq (@FULL_GMP@, no)
+############
+# Mini GMP #
+############
+CPPGMPFLAGS += -Dmalloc=__e_acsl_native_malloc
+CPPGMPFLAGS += -Drealloc=__e_acsl_native_realloc
+CPPGMPFLAGS += -Dfree=__e_acsl_native_free
+
+$(EACSL_GMP_LIB): $(EACSL_GMP_DIR)/mini-gmp/mini-gmp.c
+	$(MKDIR) $(EACSL_LIBDIR)
+	echo 'CC          $< '
+	$(CC) $< $(CPPGMPFLAGS) -c -O2 -g3 -o$(EACSL_GMP_MINI)
+	echo 'AR          $@'
+	$(AR) crus $(EACSL_GMP_LIB) $(EACSL_GMP_MINI)
+	ranlib $(EACSL_GMP_LIB)
+else
+############
+# Full GMP #
+############
+$(EACSL_GMP_LIB):
+	cd $(EACSL_GMP_DIR) && $(MAKE) $(MAKEOPTS)
+	$(MKDIR) $(EACSL_LIBDIR)
+	$(CP) $(EACSL_GMP_DIR)/.libs/libgmp.a $@
+endif
+
+all:: $(EACSL_JEMALLOC_LIB) $(EACSL_GMP_LIB)
+
+e-acsl-distclean::
+	$(PRINT_RM) e-acsl contrib libraries
+	if test -f $(EACSL_JEMALLOC_DIR)/Makefile; \
+		then $(MAKE) -s -C$(EACSL_JEMALLOC_DIR) relclean; \
+	fi
+	if test -f $(EACSL_GMP_DIR)/Makefile; \
+		then $(MAKE) -s -C$(EACSL_GMP_DIR) distclean; \
+	fi
+
+################################################
+# E-ACSL Runtime Library                       #
+################################################
+
+EACSL_SHARE := $(EACSL_PLUGIN_DIR)/share/e-acsl
+
+EACSL_RTL_SRC = $(wildcard $(EACSL_SHARE)/*.[ch] $(EACSL_SHARE)/*/*.[ch])
+
+RTLFLAGS = -std=c99 -Wall -Wno-unused -Wno-attributes -I$(EACSL_SHARE) \
+  -fno-omit-frame-pointer -DE_ACSL_BUILTINS -Wno-nonnull
+
+RTLOPT 	 = $(RTLFLAGS) -O2
+RTLDEBUG = $(RTLFLAGS) -DE_ACSL_DEBUG -g3 -O0
+
+# Build a static E-ACSL library
+  # $1 Compile-time flags
+  # $2 Library path
+  # $3 Source file
+MKRTL = \
+  echo "Making $2"; \
+  object=$$(basename -s .a $2).o && \
+  echo ' CC $3' && \
+  $(CC) $1 -c -o$$object $3 && \
+  echo ' AR $2' && \
+  $(AR) crus $2 $$object && \
+  $(RM) -f $$object && \
+  ranlib $2
+
+$(EACSL_LIBDIR)/libeacsl-rtl-%.a: $(EACSL_SHARE)/%_model/e_acsl_*_mmodel.c $(EACSL_RTL_SRC) $(EACSL_JEMALLOC_LIB) $(EACSL_GMP_LIB)
+	$(call MKRTL, $(RTLOPT), $@, $<)
+
+$(EACSL_LIBDIR)/libeacsl-rtl-%-dbg.a: $(EACSL_SHARE)/%_model/e_acsl_*_mmodel.c $(EACSL_RTL_SRC) $(EACSL_JEMALLOC_LIB) $(EACSL_GMP_LIB)
+	$(call MKRTL, $(RTLDEBUG), $@, $<)
+
+EACSL_RTL = \
+	$(EACSL_LIBDIR)/libeacsl-rtl-bittree.a \
+	$(EACSL_LIBDIR)/libeacsl-rtl-segment.a \
+	$(EACSL_LIBDIR)/libeacsl-rtl-bittree-dbg.a \
+	$(EACSL_LIBDIR)/libeacsl-rtl-segment-dbg.a
+
+clean::
+	$(PRINT_RM) E-ACSL runtime library
+	$(RM) $(EACSL_RTL)
+	$(RM) $(EACSL_LIBDIR)/*.o
+
+all:: $(EACSL_RTL)
+
+############
+# Cleaning #
+############
+
+EACSL_CLEANFILES = $(wildcard \
+	$(EACSL_JEMALLOC_LIB) $(EACSL_GMP_LIB) \
+	doc/doxygen/doxygen.cfg \
+	Makefile config.log config.status configure .depend autom4te.cache/* \
+	META.frama-c-e_acsl Makefile.plugin.generated local_config.ml top/*)
+
+e-acsl-distclean:: clean
+	$(PRINT_RM) generated project files
+	$(RM) $(addprefix $(E_ACSL_DIR)/, $(EACSL_CLEANFILES))
 
 ################################
 # Building source distribution #
 ################################
 
-EXPORT	=e-acsl-$(EACSL_VERSION)
+EXPORT = e-acsl-$(EACSL_VERSION)
 
-DOC_FILES= doc/manuals/e-acsl-manual.pdf  \
-	doc/manuals/e-acsl.pdf doc/manuals/e-acsl-implementation.pdf
+EACSL_OCAML_FILES = $(wildcard *.mli) \
+	$(filter-out $(wildcard *local_config.ml), $(wildcard *.ml))
 
-EACSL_DISTRIB_FILES=\
-  $(filter-out \
-	$(wildcard *local_config.ml), $(wildcard *.ml)) \
-	$(wildcard *.mli) \
-	configure.ac Makefile.in \
+EACSL_CONTRIB_FILES = \
+  $(shell $(CAT) contrib/MANIFEST | $(SED) 's/^/contrib\//g')
+
+EACSL_DOC_FILES = \
+	doc/manuals/e-acsl-manual.pdf  \
+	doc/manuals/e-acsl.pdf \
+	doc/manuals/e-acsl-implementation.pdf \
+	doc/doxygen/doxygen.cfg.in \
 	doc/Changelog \
-	$(DOC_FILES) \
-	scripts/e-acsl-gcc.sh \
-	man/e-acsl-gcc.sh.1 \
-	share/e-acsl/*.[ch] \
-	share/e-acsl/memory_model/e_acsl_bittree.[ch] \
-	share/e-acsl/memory_model/e_acsl_mmodel*.[ch] \
-	tests/test_config.in \
-	tests/e-acsl-reject/test_config tests/e-acsl-reject/*.i \
-	tests/e-acsl-runtime/test_config tests/e-acsl-runtime/*.[ci] \
-	license/CEA_LGPL license/SPARETIMELABS \
-	license/headache_config.txt license/LGPLv2.1 \
-	INSTALL README VERSION .depend
+	man/e-acsl-gcc.sh.1
+
+EACSL_TEST_FILES = \
+  tests/test_config.in tests/print.ml \
+  $(foreach dir, $(addprefix tests/,$(PLUGIN_TESTS_DIRS)), \
+    $(wildcard \
+      $(dir)/*.[ic] \
+      $(dir)/test_config \
+      $(dir)/oracle/*.c \
+      $(dir)/oracle/*.oracle \
+  ))
+
+EACSL_RTL_FILES = $(EACSL_RTL_SRC)
+
+EACSL_SCRIPT_FILES = scripts/e-acsl-gcc.sh scripts/testrun.sh
+
+EACSL_LICENSE_FILES = \
+  license/CEA_LGPL license/SPARETIMELABS \
+  license/headache_config.txt license/LGPLv2.1
+
+EACSL_MISC_FILES = \
+  configure.ac Makefile.in INSTALL README VERSION .depend
+
+EACSL_DISTRIB_FILES = \
+  $(EACSL_MISC_FILES) \
+  $(EACSL_OCAML_FILES) \
+  $(EACSL_DOC_FILES) \
+  $(EACSL_TEST_FILES) \
+  $(EACSL_RTL_FILES) \
+  $(EACSL_SCRIPT_FILES) \
+  $(EACSL_LICENSE_FILES) \
+  $(EACSL_CONTRIB_FILES)
 
 # BE CAREFUL: manually remove all *.ml* files which should not be released!
 e-acsl-distrib: .depend
@@ -190,19 +296,12 @@ e-acsl-distrib: .depend
 	$(MKDIR) $(EXPORT)
 	$(PRINT_UNTAR) tmp-distrib
 	cd $(EXPORT); \
-	  $(TAR) xf ../tmp.tar; autoconf; \
-	  $(SED) -i \
-	    -e 's/IS_DISTRIBUTED:=yes/IS_DISTRIBUTED:=yes/' Makefile.in; \
-	  $(RM) -rf autom4te.cache
+		$(TAR) xf ../tmp.tar && \
+		autoconf && \
+		$(SED) -i -e 's/IS_DISTRIBUTED:=yes/IS_DISTRIBUTED:=yes/' Makefile.in && \
+		$(RM) -rf autom4te.cache
 	$(PRINT_RM) tmp-distrib
 	$(RM) tmp.tar
-	$(PRINT_MAKING) test directories
-	for dir in $(EXPORT)/tests/*; do \
-	  if test -d $$dir; then \
-	    $(MKDIR) $$dir/result; \
-	    $(MKDIR) $$dir/oracle; \
-          fi \
-	done
 	$(PRINT_MAKING) archive
 	$(TAR) czf $(EXPORT).tar.gz $(EXPORT)
 	$(PRINT) Cleaning
@@ -212,13 +311,29 @@ WWW	?= /localhome/julien/frama-c/doc/www
 e-acsl-install-distrib: e-acsl-distrib
 	$(PRINT) Copying to website
 	$(CP) $(EXPORT).tar.gz $(WWW)/distrib/download/e-acsl
-	$(CP) $(DOC_FILES) $(WWW)/distrib/download/e-acsl
+	$(CP) $(EACSL_DOC_FILES) $(WWW)/distrib/download/e-acsl
 	$(CP) doc/manuals/e-acsl-manual.pdf \
 	      $(WWW)/distrib/download/e-acsl/e-acsl-manual-$(EACSL_VERSION).pdf
 	$(CP) doc/manuals/e-acsl.pdf \
 	      $(WWW)/distrib/download/e-acsl/e-acsl-1.7.pdf
 	$(CP) doc/manuals/e-acsl-implementation.pdf \
 	      $(WWW)/distrib/download/e-acsl/e-acsl-implementation-$(EACSL_VERSION).pdf
+
+##############################
+# Check source distribution  #
+##############################
+e-acsl-distrib-check:
+	$(RM) -rf $(EXPORT)*
+	$(MAKE) e-acsl-distrib
+	$(TAR) -xvf $(EXPORT).tar.gz
+	unset FRAMAC_LIB && \
+	  cd $(EXPORT) && \
+	  ./configure && \
+    $(MAKE) && \
+    $(MAKE) doc && \
+    $(MAKE) tests && \
+    cd ../ && \
+    $(RM) -rf $(EXPORT)*
 
 ##########
 # Header #
@@ -239,6 +354,55 @@ headers::
 
 include $(FRAMAC_SHARE)/Makefile.dynamic
 
+################
+# Version      #
+################
+
+EACSL_VERSION:=$(shell sed -e 's/\\(.*\\)/\\1/' $(EACSL_PLUGIN_DIR)/VERSION)
+
+###########
+# Install #
+###########
+
+install::
+	$(PRINT_INSTALL) E-ACSL share files
+	$(MKDIR) $(FRAMAC_DATADIR)/e-acsl
+	$(CP) $(E_ACSL_DIR)/share/e-acsl/*.[ch] $(FRAMAC_DATADIR)/e-acsl
+	$(MKDIR) $(FRAMAC_DATADIR)/e-acsl/bittree_model \
+		 $(FRAMAC_DATADIR)/e-acsl/glibc
+	$(CP) $(E_ACSL_DIR)/share/e-acsl/bittree_model/* \
+		$(FRAMAC_DATADIR)/e-acsl/bittree_model
+	$(CP) $(E_ACSL_DIR)/share/e-acsl/glibc/* $(FRAMAC_DATADIR)/e-acsl/glibc
+	$(PRINT_INSTALL) E-ACSL manuals
+	$(MKDIR) $(FRAMAC_DATADIR)/manuals
+	$(CP) $(E_ACSL_DIR)/doc/manuals/e-acsl.pdf \
+	      $(E_ACSL_DIR)/doc/manuals/e-acsl-implementation.pdf \
+	      $(E_ACSL_DIR)/doc/manuals/e-acsl-manual.pdf \
+	$(FRAMAC_DATADIR)/manuals
+	$(PRINT_INSTALL) E-ACSL libraries
+	$(MKDIR) $(LIBDIR)
+	$(CP) $(EACSL_LIBDIR)/libeacsl-*.a $(LIBDIR)
+	$(PRINT_INSTALL) E-ACSL scripts
+	$(MKDIR) $(BINDIR)
+	$(CP) $(E_ACSL_DIR)/scripts/e-acsl-gcc.sh $(BINDIR)/
+	$(PRINT_INSTALL) E-ACSL man pages
+	$(MKDIR) $(MANDIR)/man1
+	$(CP) $(E_ACSL_DIR)/man/e-acsl-gcc.sh.1 $(MANDIR)/man1/
+
+uninstall::
+	$(PRINT_RM) E-ACSL share files
+	$(RM) -r $(FRAMAC_DATADIR)/e-acsl
+	$(PRINT_RM) E-ACSL manuals
+	$(RM) $(FRAMAC_DATADIR)/manuals/e-acsl.pdf \
+	      $(FRAMAC_DATADIR)/manuals/e-acsl-implementation.pdf \
+	      $(FRAMAC_DATADIR)/manuals/e-acsl-manual.pdf
+	$(PRINT_RM) E-ACSL libraries
+	$(RM) $(LIBDIR)/libeacsl-*.a
+	$(PRINT_RM) E-ACSL scripts
+	$(RM) $(BINDIR)/e-acsl-gcc.sh
+	$(PRINT_RM) man pages
+	$(RM) $(MANDIR)/man1/e-acsl-gcc.sh.1
+
 ####################
 # Testing (part 2) #
 ####################
@@ -246,7 +410,7 @@ include $(FRAMAC_SHARE)/Makefile.dynamic
 ifeq (@MAY_RUN_TESTS@,yes)
 
 $(E_ACSL_DIR)/tests/test_config: $(E_ACSL_DIR)/tests/test_config.in \
-				$(E_ACSL_DIR)/Makefile
+	$(E_ACSL_DIR)/Makefile
 	$(PRINT_MAKING) $@
 	$(SED) -e "s|@SEDCMD@|`which sed `|g" $< > $@
 
@@ -266,3 +430,24 @@ endif
 
 $(E_ACSL_DIR)/Makefile: $(E_ACSL_DIR)/Makefile.in $(CONFIG_STATUS_DIR_DEP)
 	cd $(CONFIG_STATUS_DIR) && ./config.status
+
+#####################################
+# Doxygen                           #
+#####################################
+
+DOXYGEN = @DOXYGEN@
+doxygen:
+	if ! test $(DOXYGEN) = "no"; then \
+		$(DOXYGEN) $(E_ACSL_DIR)/doc/doxygen/doxygen.cfg ; \
+	else \
+		echo "Warning: Skip doxygen documentation: \
+Doxygen executable not found."; \
+	fi
+
+doc:: doxygen
+
+clean::
+	$(PRINT_RM) generated documentation
+	$(RM) $(E_ACSL_DIR)/doc/doxygen/html/*
+	$(RM) $(E_ACSL_DIR)/doc/code/*
+	$(RM) $(E_ACSL_DIR)/doc/doxygen/warn.log

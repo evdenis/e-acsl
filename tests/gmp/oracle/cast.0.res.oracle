@@ -1,0 +1,15 @@
+[e-acsl] beginning translation.
+FRAMAC_SHARE/libc/stdlib.h:160:[kernel] warning: No code nor implicit assigns clause for function calloc, generating default assigns from the prototype
+[e-acsl] translation done in project "e-acsl".
+[value] Analyzing a complete application starting at main
+[value] Computing initial state
+[value] Initial state computed
+[value:initial-state] Values of globals at initialization
+  __fc_random_counter ∈ {0}
+  __fc_rand_max ∈ {32767}
+  __fc_heap_status ∈ [--..--]
+  __e_acsl_init ∈ [--..--]
+  __e_acsl_internal_heap ∈ [--..--]
+  __e_acsl_heap_allocation_size ∈ [--..--]
+[value] using specification for function __e_acsl_assert
+[value] done for function main

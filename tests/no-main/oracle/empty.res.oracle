@@ -1,0 +1,12 @@
+[kernel] Parsing FRAMAC_SHARE/libc/__fc_builtin_for_normalization.i (no preprocessing)
+[kernel] Parsing FRAMAC_SHARE/e-acsl/e_acsl.h (with preprocessing)
+[kernel] Parsing FRAMAC_SHARE/e-acsl/e_acsl_gmp.h (with preprocessing)
+[kernel] Parsing FRAMAC_SHARE/e-acsl/e_acsl_mmodel_api.h (with preprocessing)
+[kernel] Parsing tests/no-main/empty.i (no preprocessing)
+[e-acsl] beginning translation.
+[e-acsl] warning: cannot find entry point `main'.
+                  Please use option `-main' for specifying a valid entry point.
+                  The generated program may miss memory instrumentation
+                  if there are memory-related annotations.
+FRAMAC_SHARE/libc/stdlib.h:160:[kernel] warning: No code nor implicit assigns clause for function calloc, generating default assigns from the prototype
+[e-acsl] translation done in project "e-acsl".

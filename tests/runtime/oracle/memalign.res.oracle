@@ -1,0 +1,18 @@
+[e-acsl] beginning translation.
+FRAMAC_SHARE/libc/stdlib.h:160:[kernel] warning: No code nor implicit assigns clause for function calloc, generating default assigns from the prototype
+[e-acsl] translation done in project "e-acsl".
+tests/runtime/memalign.c:12:[kernel] warning: Neither code nor specification for function posix_memalign, generating default assigns from the prototype
+tests/runtime/memalign.c:14:[value] warning: out of bounds read. assert \valid_read(memptr);
+tests/runtime/memalign.c:15:[value] warning: assertion got status unknown.
+FRAMAC_SHARE/e-acsl/e_acsl.h:43:[value] warning: function __e_acsl_assert: precondition got status unknown.
+tests/runtime/memalign.c:16:[value] warning: assertion got status unknown.
+tests/runtime/memalign.c:17:[value] warning: assertion got status unknown.
+FRAMAC_SHARE/libc/stdlib.h:192:[value] warning: function free, behavior deallocation: precondition 'freeable' got status unknown.
+tests/runtime/memalign.c:19:[value] warning: assertion got status unknown.
+tests/runtime/memalign.c:22:[kernel] warning: Neither code nor specification for function aligned_alloc, generating default assigns from the prototype
+tests/runtime/memalign.c:23:[value] warning: assertion got status unknown.
+tests/runtime/memalign.c:26:[value] warning: assertion got status unknown.
+tests/runtime/memalign.c:29:[value] warning: assertion got status unknown.
+tests/runtime/memalign.c:32:[value] warning: assertion got status unknown.
+tests/runtime/memalign.c:33:[value] warning: assertion got status unknown.
+tests/runtime/memalign.c:34:[value] warning: assertion got status invalid (stopping propagation).

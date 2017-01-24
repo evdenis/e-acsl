@@ -1,0 +1,6 @@
+[e-acsl] beginning translation.
+[e-acsl] warning: annotating undefined function `atoi':
+                  the generated program may miss memory instrumentation
+                  if there are memory-related annotations.
+FRAMAC_SHARE/libc/stdlib.h:160:[kernel] warning: No code nor implicit assigns clause for function calloc, generating default assigns from the prototype
+[e-acsl] translation done in project "e-acsl".

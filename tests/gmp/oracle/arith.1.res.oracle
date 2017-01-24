@@ -1,0 +1,29 @@
+[e-acsl] beginning translation.
+FRAMAC_SHARE/libc/stdlib.h:160:[kernel] warning: No code nor implicit assigns clause for function calloc, generating default assigns from the prototype
+[e-acsl] translation done in project "e-acsl".
+[value] Analyzing a complete application starting at main
+[value] Computing initial state
+[value] Initial state computed
+[value:initial-state] Values of globals at initialization
+  __fc_random_counter ∈ {0}
+  __fc_rand_max ∈ {32767}
+  __fc_heap_status ∈ [--..--]
+  __e_acsl_init ∈ [--..--]
+  __e_acsl_internal_heap ∈ [--..--]
+  __e_acsl_heap_allocation_size ∈ [--..--]
+[value] using specification for function __gmpz_init_set_si
+[value] using specification for function __gmpz_init
+[value] using specification for function __gmpz_neg
+[value] using specification for function __gmpz_cmp
+[value] using specification for function __e_acsl_assert
+FRAMAC_SHARE/e-acsl/e_acsl.h:43:[value] warning: function __e_acsl_assert: precondition got status unknown.
+[value] using specification for function __gmpz_clear
+[value] using specification for function __gmpz_com
+[value] using specification for function __gmpz_add
+[value] using specification for function __gmpz_sub
+[value] using specification for function __gmpz_mul
+[value] using specification for function __gmpz_tdiv_q
+[value] using specification for function __gmpz_init_set_str
+[value] using specification for function __gmpz_tdiv_r
+[value] using specification for function __gmpz_init_set_ui
+[value] done for function main

@@ -1,0 +1,5 @@
+[e-acsl] beginning translation.
+FRAMAC_SHARE/libc/stdlib.h:160:[kernel] warning: No code nor implicit assigns clause for function calloc, generating default assigns from the prototype
+[e-acsl] translation done in project "e-acsl".
+tests/runtime/freeable.c:15:[value] warning: assertion got status unknown.
+tests/runtime/freeable.c:15:[value] warning: accessing uninitialized left-value. assert \initialized(&p);

@@ -20,6 +20,12 @@
 /*                                                                        */
 /**************************************************************************/
 
+/*! ***********************************************************************
+ * \file  e_acsl_gmp.h
+ * \brief Prototypes of functions belonging to GNU Multiple
+ * Precision Arithmetic Library (GMP) used within E-ACSL
+***************************************************************************/
+
 /******************/
 /* GMP prototypes */
 /******************/
@@ -28,7 +34,18 @@
 #define E_ACSL_GMP
 
 #include "stdlib.h"
-#include "e_acsl_gmp_types.h"
+
+#define mpz_struct __e_acsl_mpz_struct
+#define mpz_t      __e_acsl_mpz_t
+
+struct mpz_struct {
+  int _mp_alloc;
+  int _mp_size;
+  unsigned long *_mp_d;
+};
+
+typedef struct mpz_struct mpz_struct;
+typedef mpz_struct (__attribute__((__FC_BUILTIN__)) mpz_t)[1];
 
 /****************/
 /* Initializers */
@@ -74,7 +91,7 @@ extern void __gmpz_init_set_si(mpz_t z, signed long int n)
   @ allocates z;
   @ ensures \valid(z);
   @ ensures \initialized(z);
-  @ assigns *z \from str[0..],base; 
+  @ assigns *z \from str[0..],base;
   @ assigns \result \from str[0..],base; */
 extern int __gmpz_init_set_str(mpz_t z, const char *str, int base)
   __attribute__((FC_BUILTIN));
@@ -181,7 +198,7 @@ extern void __gmpz_tdiv_r(mpz_t z1, const mpz_t z2, const mpz_t z3)
 
 /*@ requires \valid(z1);
   @ requires \valid_read(z2);
-  @ assigns *z1 \from *z2; 
+  @ assigns *z1 \from *z2;
   @ assigns \result \from *z1,*z2; */
 extern int __gmpz_com(mpz_t z1, const mpz_t z2)
   __attribute__((FC_BUILTIN));
@@ -190,12 +207,12 @@ extern int __gmpz_com(mpz_t z1, const mpz_t z2)
 /* Coercions to C types */
 /************************/
 
-/*@ requires \valid_read(z); 
+/*@ requires \valid_read(z);
   @ assigns \result \from *z; */
 extern long __gmpz_get_si(const mpz_t z)
   __attribute__((FC_BUILTIN));
 
-/*@ requires \valid_read(z); 
+/*@ requires \valid_read(z);
   @ assigns \result \from *z; */
 extern unsigned long __gmpz_get_ui(const mpz_t z)
   __attribute__((FC_BUILTIN));

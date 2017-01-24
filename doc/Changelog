@@ -15,10 +15,54 @@
 #   E-ACSL: the Whole E-ACSL plug-in
 ###############################################################################
 
+#########################
+Plugin E-ACSL 0.8 Silicon
+#########################
+
+-* E-ACSL       [2016/11/07] Added --rte-select feature to e-acsl-gcc.sh.
+-* E-ACSL       [2016/08/02] Added --rt-debug feature to e-acsl-gcc.sh.
+	        --enable-optimized-rtl configure option removed
+-* E-ACSL       [2016/08/02] Added --enable-optimized-rtl option to configure
+-* E-ACSL       [2016/08/02] Removed --production|-P, --no-stdlib|-N and
+	        --debug-log|-D options of e-acsl-gcc.sh.
+-* E-ACSL       [2016/07/21] Enable reporting of stack traces during assertion
+	        failures in instrumented programs.
+-* E-ACSL       [2016/07/13] Add an e-acsl-gcc.sh option (--print--models)
+	        allowing to print the names of the supported memory models.
+-* E-ACSL       [2016/07/01] Add monitoring support for aligned memory
+	        allocation via posix_memalign and aligned alloc functions.
+-* E-ACSL       [2016/07/01] Add local version of GMP library customized for use
+	        with E-ACSL runtime library.
+-* E-ACSL       [2016/07/01] Add custom implementation of malloc for use with
+	        E-ACSL runtime library (via jemalloc library).
+-  E-ACSL       [2016/05/31] New option -e-acsl-builtins which allows to
+	        declare pure C functions which can be used in logic
+	        function application.
+-  E-ACSL       [2016/05/23] Re-implementation of the type system which
+	        improves the efficiency of the generated code over integers.
+-* E-ACSL       [2016/05/23] Fix bug #2191 about complicate structs and
+	        literate string.
+-* E-ACSL       [2016/05/22] Add an e-acsl-gcc.sh option (--rte|-a) allowing to
+	        annotate the source program with memory-safety assertions prior
+	        to instrumentation.
+-* E-ACSL       [2016/05/23] Fix bug #1395 about recursive functions.
+-* E-ACSL       [2016/04/07] Fix 'make install' when executed within Frama-C.
+-* E-ACSL       [2016/03/31] Improve performance of Patricia Trie memory model.
+-* E-ACSL       [2016/02/25] Fix 'make clean' in tests.
+-* E-ACSL       [2016/01/15] Fix several bugs related to incorrect partial
+	        initialization of tracked memory blocks in the E-ACSL runtime
+	        library.
+
+###########################
+Plugin E-ACSL 0.6 Magnesium
+###########################
+
+-* E-ACSL       [2016/01/22] Add an e-acsl-gcc.sh option allowing to skip
+	        compilation of original sources.
 -* E-ACSL       [2016/01/15] Fix installation with custom --prefix.
 -* E-ACSL       [2016/01/05] Fix bug in the memory model that caused the
 	        tracked size of heap memory be computed incorrectly.
--  E-ACSL       [2015/12/15] Added a convenience script e-acsl-gcc.sh for
+-  E-ACSL       [2015/12/15] Add a convenience script e-acsl-gcc.sh for
 	        small runs of the E-ACSL plugin.
 -* E-ACSL       [2015/12/08] Fix bug #1817 about incorrect initialization of
 	        literal strings in global arrays with compound initializers.
@@ -96,9 +140,9 @@ Plugin E-ACSL 0.3 Fluorine_20130601
 	        running E-ACSL in another project (bts #!1473).
 -* E-ACSL       [2013/06/26] Fix crash with typedef on pointer types.
 -  E-ACSL       [2013/06/21] Fewer unknown locations.
--* E-ACSL       [2013/06/18] Fixed bug when generating RTEs on the E-ACSL
+-* E-ACSL       [2013/06/18] Fix bug when generating RTEs on the E-ACSL
 	        generated project.
--* E-ACSL       [2013/05/30] Fixed -e-acsl-debug n, with n >= 2.
+-* E-ACSL       [2013/05/30] Fix -e-acsl-debug n, with n >= 2.
 
 ###################################
 Plugin E-ACSL 0.2 Fluorine_20130401

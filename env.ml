@@ -59,7 +59,7 @@ type t =
       env_stack: local_env list;
       init_env: local_env;
       var_mapping: Varinfo.t Logic_var.Map.t; (* bind logic var to C var *)
-      loop_invariants: predicate named list list;
+      loop_invariants: predicate list list;
       (* list of loop invariants for each currently visited loops *) 
       cpt: int; (* counter used when generating variables *) }
 
@@ -170,15 +170,15 @@ let acc_list_rev acc l = List.fold_left (fun acc x -> x :: acc) acc l
 let do_new_var ~loc init ?(scope=Local_block) ?(name="") env t ty mk_stmts =
   let local_env, tl_env = top init env in
   let local_block = local_env.block_info in
-  let is_t = Mpz.is_t ty in
-  if is_t then Mpz.is_now_referenced ();
+  let is_t = Gmpz.is_t ty in
+  if is_t then Gmpz.is_now_referenced ();
   let n = succ env.cpt in
   let v =
     Cil.makeVarinfo
       ~source:true
       false (* is a global? *)
       false (* is a formal? *)
-      (Varname.get ~scope ("__e_acsl" ^ if name = "" then "" else "_" ^ name))
+      (Varname.get ~scope (Misc.mk_gen_name name))
       ty
   in
   v.vreferenced <- true;
@@ -203,7 +203,7 @@ let do_new_var ~loc init ?(scope=Local_block) ?(name="") env t ty mk_stmts =
 (*      Options.feedback "memoizing %a for term %a" 
 	Varinfo.pretty v (fun fmt t -> match t with None -> Format.fprintf fmt
 	  "NONE" | Some t -> Term.pretty fmt t) t;*)
-      { clear_stmts = Mpz.clear ~loc e :: tbl.clear_stmts;
+      { clear_stmts = Gmpz.clear ~loc e :: tbl.clear_stmts;
 	new_exps = match t with
 	| None -> tbl.new_exps
 	| Some t -> Term.Map.add t (v, e) tbl.new_exps }
@@ -263,8 +263,8 @@ let new_var ~loc ?(init=false) ?(scope=Local_block) ?name env t ty mk_stmts =
 
 let new_var_and_mpz_init ~loc ?init ?scope ?name env t mk_stmts =
   new_var 
-    ~loc ?init ?scope ?name env t (Mpz.t ()) 
-    (fun v e -> Mpz.init ~loc e :: mk_stmts v e)
+    ~loc ?init ?scope ?name env t (Gmpz.t ()) 
+    (fun v e -> Gmpz.init ~loc e :: mk_stmts v e)
 
 module Logic_binding = struct
 
@@ -273,11 +273,11 @@ module Logic_binding = struct
       | Some ty -> ty
       | None -> match logic_v.lv_type with
 	| Ctype ty -> ty
-	| Linteger -> Mpz.t ()
+	| Linteger -> Gmpz.t ()
 	| Ltype _ as ty when Logic_const.is_boolean_type ty -> Cil.charType
 	| Ltype _ | Lvar _ | Lreal | Larrow _ as lty -> 
 	  let msg = 
-	    Pretty_utils.sfprintf 
+	    Format.asprintf
 	      "logic variable of type %a" Logic_type.pretty lty
 	  in
 	  Error.not_yet msg

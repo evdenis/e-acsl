@@ -29,6 +29,7 @@ module Prepare: Parameter_sig.Bool
 module Gmp_only: Parameter_sig.Bool
 module Full_mmodel: Parameter_sig.Bool
 module Project_name: Parameter_sig.String
+module Builtins: Parameter_sig.String_set
 
 val must_visit: unit -> bool
 

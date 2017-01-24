@@ -30,6 +30,8 @@ open Cil_datatype
 
 let dkey = Options.dkey_analysis
 module Env: sig
+  val has_heap_allocations: unit -> bool
+  val check_heap_allocations: string -> unit
   val default_varinfos: Varinfo.Hptset.t option -> Varinfo.Hptset.t
   val apply: (kernel_function -> 'a) -> kernel_function -> 'a
   val clear: unit -> unit
@@ -44,6 +46,11 @@ module Env: sig
   val consolidated_mem: varinfo -> bool
   val is_empty: unit -> bool
 end = struct
+
+  let heap_allocation_ref = ref false
+  let has_heap_allocations () = !heap_allocation_ref
+  let check_heap_allocations fn =
+    heap_allocation_ref := !heap_allocation_ref || Misc.is_alloc_name fn
 
   let current_kf = ref None
   let default_varinfos = function None -> Varinfo.Hptset.empty | Some s -> s 
@@ -128,7 +135,8 @@ end = struct
   let clear () = 
     Kernel_function.Hashtbl.clear tbl;
     consolidated_set := Varinfo.Hptset.empty;
-    is_consolidated_ref := false
+    is_consolidated_ref := false;
+    heap_allocation_ref := false
 
 end
 
@@ -222,8 +230,7 @@ module rec Transfer
     | Var vi -> add_vi state vi
     | Mem e -> 
       match base_addr e with
-      | None -> 
-        Kernel.fatal "[pre_analysis] no base address for %a" Printer.pp_exp e
+      | None -> state
       | Some vi -> add_vi state vi
 
   (* if [e] contains a pointer left-value, then also monitor the host *)
@@ -301,8 +308,9 @@ module rec Transfer
 
   let register_object kf state_ref = object
     inherit Visitor.frama_c_inplace
-    method !vpredicate = function
-    | Pvalid(_, t) | Pvalid_read(_, t) | Pinitialized(_, t) | Pfreeable(_, t) ->
+    method !vpredicate_node = function
+    | Pvalid(_, t) | Pvalid_read(_, t) | Pvalid_function t
+    | Pinitialized(_, t) | Pfreeable(_, t) ->
       (*	Options.feedback "REGISTER %a" Cil.d_term t;*)
       state_ref := register_term kf !state_ref t;
       Cil.DoChildren
@@ -447,6 +455,7 @@ let register_predicate kf pred state =
     | Call(result, f_exp, l, _) -> 
       (match f_exp.enode with
       | Lval(Var vi, NoOffset) ->
+        Env.check_heap_allocations vi.vname;
         let kf = Globals.Functions.get vi in
         let params = Globals.Functions.get_params kf in
         let state =
@@ -506,9 +515,7 @@ let register_predicate kf pred state =
               | Var vi -> Varinfo.Hptset.add vi state
               | Mem e -> 
                 match base_addr e with
-                | None -> 
-                  Kernel.fatal "[pre_analysis] no base address for %a" 
-                    Printer.pp_exp e
+                | None -> state
                 | Some vi -> Varinfo.Hptset.add vi state
             else
               state
@@ -700,7 +707,8 @@ let old_must_model_vi bhv ?kf ?stmt vi =
   Options.Full_mmodel.get ()
   || must_model_vi ?kf ?stmt (Cil.get_original_varinfo bhv vi)
 
-let use_model () = not (Env.is_empty ()) || Options.Full_mmodel.get ()
+let use_model () = not (Env.is_empty ()) || Options.Full_mmodel.get () ||
+  Env.has_heap_allocations ()
 
 (*
 Local Variables:

@@ -84,6 +84,14 @@ module Full_mmodel =
       let help = "maximal memory-related instrumentation"
      end)
 
+module Builtins =
+  String_set
+    (struct
+      let option_name = "-e-acsl-builtins"
+      let arg_name = ""
+      let help = "C functions which can be used in the E-ACSL specifications"
+     end)
+
 let () = Parameter_customize.set_group help
 module Version =
   False

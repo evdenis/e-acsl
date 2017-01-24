@@ -1,0 +1,36 @@
+[e-acsl] beginning translation.
+FRAMAC_SHARE/libc/stdlib.h:160:[kernel] warning: No code nor implicit assigns clause for function calloc, generating default assigns from the prototype
+[e-acsl] translation done in project "e-acsl".
+[value] Analyzing a complete application starting at main
+[value] Computing initial state
+[value] Initial state computed
+[value:initial-state] Values of globals at initialization
+  __fc_random_counter ∈ {0}
+  __fc_rand_max ∈ {32767}
+  __fc_heap_status ∈ [--..--]
+  __e_acsl_init ∈ [--..--]
+  __e_acsl_internal_heap ∈ [--..--]
+  __e_acsl_heap_allocation_size ∈ [--..--]
+  A ∈ {0}
+[value] using specification for function __e_acsl_memory_init
+[value] using specification for function __e_acsl_store_block
+[value] using specification for function __e_acsl_full_init
+[value] using specification for function __e_acsl_delete_block
+[value] using specification for function __e_acsl_assert
+tests/gmp/at.i:12:[value] cannot evaluate ACSL term, \at() on a C label is unsupported
+tests/gmp/at.i:12:[value] warning: assertion got status unknown.
+tests/gmp/at.i:48:[value] cannot evaluate ACSL term, \at() on a C label is unsupported
+tests/gmp/at.i:48:[value] warning: assertion got status unknown.
+tests/gmp/at.i:49:[value] cannot evaluate ACSL term, \at() on a C label is unsupported
+tests/gmp/at.i:49:[value] warning: assertion got status unknown.
+tests/gmp/at.i:50:[value] cannot evaluate ACSL term, \at() on a C label is unsupported
+tests/gmp/at.i:50:[value] warning: assertion got status unknown.
+[value] using specification for function __e_acsl_initialize
+[value] using specification for function __e_acsl_valid_read
+FRAMAC_SHARE/e-acsl/e_acsl.h:43:[value] warning: function __e_acsl_assert: precondition got status unknown.
+tests/gmp/at.i:26:[value] cannot evaluate ACSL term, \at() on a C label is unsupported
+tests/gmp/at.i:26:[value] warning: assertion got status unknown.
+tests/gmp/at.i:28:[value] cannot evaluate ACSL term, \at() on a C label is unsupported
+tests/gmp/at.i:28:[value] warning: assertion got status unknown.
+[value] using specification for function __e_acsl_memory_clean
+[value] done for function main

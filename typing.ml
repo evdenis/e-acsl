@@ -2,7 +2,7 @@
 (*                                                                        *)
 (*  This file is part of the Frama-C's E-ACSL plug-in.                    *)
 (*                                                                        *)
-(*  Copyright (C) 2012-2016                                               *)
+(*  Copyright (C) 2012-2015                                               *)
 (*    CEA (Commissariat à l'énergie atomique et aux énergies              *)
 (*         alternatives)                                                  *)
 (*                                                                        *)
@@ -21,579 +21,615 @@
 (**************************************************************************)
 
 open Cil_types
-open Cil_datatype
+
+(* Implement Figure 4 of J. Signoles' JFLA'15 paper "Rester statique pour
+   devenir plus rapide, plus précis et plus mince". *)
 
 let dkey = Options.dkey_typing
 
-module Z = Integer
+let compute_quantif_guards_ref
+    : (predicate -> logic_var list -> predicate ->
+       (term * relation * logic_var * relation * term) list) ref
+    = Extlib.mk_fun "compute_quantif_guards_ref"
 
-let is_representable n k = 
-  if Options.Gmp_only.get () then
-    match k with
-    | IBool | IChar | ISChar | IUChar | IInt | IUInt | IShort | IUShort 
-    | ILong | IULong ->
-      true
-    | ILongLong | IULongLong ->
-      (* no GMP initializer from a long long *)
-      false
+(******************************************************************************)
+(** Datatype and constructor *)
+(******************************************************************************)
+
+type integer_ty =
+  | Gmp
+  | C_type of ikind
+  | Other
+
+let gmp = Gmp
+let c_int = C_type IInt
+let ikind ik = C_type ik
+let other = Other
+
+(* the integer_ty corresponding to the largest possible offset. *)
+let offset_ty () = C_type Cil.theMachine.Cil.ptrdiffKind
+
+include Datatype.Make
+(struct
+  type t = integer_ty
+  let name = "E_ACSL.New_typing.t"
+  let reprs = [ Gmp; c_int ]
+  include Datatype.Undefined
+
+  let compare ty1 ty2 = match ty1, ty2 with
+    | C_type i1, C_type i2 ->
+      if i1 = i2 then 0
+      else if Cil.intTypeIncluded i1 i2 then -1 else 1
+    | (Other | C_type _), Gmp | Other, C_type _ -> -1
+    | Gmp, (C_type _ | Other) | C_type _, Other -> 1
+    | Gmp, Gmp | Other, Other -> 0
+
+  let equal = Datatype.from_compare
+
+  let pretty fmt = function
+    | Gmp -> Format.pp_print_string fmt "GMP"
+    | C_type k -> Printer.pp_ikind fmt k
+    | Other -> Format.pp_print_string fmt "OTHER"
+ end)
+
+(******************************************************************************)
+(** Basic operations *)
+(******************************************************************************)
+
+let join ty1 ty2 =
+  if Options.Gmp_only.get () then Gmp
   else
-    Z.ge n Z.min_int64 && Z.le n Z.max_int64
+    match ty1, ty2 with
+    | Other, Other -> Other
+    | Other, (Gmp | C_type _) | (Gmp | C_type _), Other ->
+      Options.fatal "[typing] join failure: integer and non integer type"
+    | Gmp, _ | _, Gmp -> Gmp
+    | C_type i1, C_type i2 ->
+      let ty = Cil.arithmeticConversion (TInt(i1, [])) (TInt(i2, [])) in
+      match ty with
+      | TInt(i, _) -> C_type i
+      | _ ->
+        Options.fatal "[typing] join failure: unexpected result %a"
+          Printer.pp_typ ty
+
+exception Not_an_integer
+let typ_of_integer_ty = function
+  | Gmp -> Gmpz.t ()
+  | C_type ik -> TInt(ik, [])
+  | Other -> raise Not_an_integer
 
 (******************************************************************************)
-(** Type Definitions: Intervals *)
+(** Memoization *)
 (******************************************************************************)
 
-type eacsl_typ =
-  | Interv of Z.t * Z.t
-  | Z
-  | No_integral of logic_type
+type computed_info =
+    { ty: t;  (* type required for the term *)
+      op: t; (* type required for the operation *)
+      cast: t option; (* if not [None], type of the context which the term
+                         must be casted to. If [None], no cast needed. *)
+    }
 
-(* debugging purpose only *)
-let pretty_eacsl_typ fmt = function
-  | Interv(l, u) -> 
-    Format.fprintf fmt "[ %a; %a ]" 
-      (fun z -> Z.pretty z) l 
-      (fun z -> Z.pretty z) u
-  | Z -> Format.fprintf fmt "Z"
-  | No_integral lty -> Format.fprintf fmt "%a" Printer.pp_logic_type lty
-
-let ikind_of_integer i unsigned = 
-  (* int whenever possible to prevent superfluous casts in the generated code *)
-  if Cil.fitsInInt IInt i then IInt else Cil.intKindForValue i unsigned
-
-let typ_of_eacsl_typ = function
-  | Interv(l, u) -> 
-    let is_pos = Z.ge l Z.zero in
-    (try 
-       let ty_l = TInt(ikind_of_integer l is_pos, []) in
-       let ty_u = TInt(ikind_of_integer u is_pos, []) in
-       Cil.arithmeticConversion ty_l ty_u
-     with Cil.Not_representable -> 
-       Mpz.t ())
-  | Z -> Mpz.t ()
-  | No_integral (Ctype ty) -> ty
-  | No_integral ty when Logic_const.is_boolean_type ty -> assert false
-  | No_integral (Ltype _) -> Error.not_yet "typing of user-defined logic type"
-  | No_integral (Lvar _) -> Error.not_yet "type variable"
-  | No_integral Linteger -> Mpz.t ()
-  | No_integral Lreal -> TFloat(FLongDouble, [])
-  | No_integral (Larrow _) -> Error.not_yet "functional type"
-
-let eacsl_typ_of_typ ty = 
-  match Cil.unrollType ty with
-  | TInt(k, _) as ty -> 
-    let n = Cil.bitsSizeOf ty in
-    let l, u = 
-      if Cil.isSigned k then Cil.min_signed_number n, Cil.max_signed_number n
-      else Z.zero, Cil.max_unsigned_number n
-    in
-    Interv(l, u)
-  | ty when Mpz.is_t ty -> Z
-  | ty -> No_integral (Ctype ty)
-
-exception Cannot_compare
-let meet ty1 ty2 = match ty1, ty2 with
-  | Interv(l1, u1), Interv(l2, u2) -> 
-    let l = Z.max l1 l2 in
-    let u = Z.min u1 u2 in
-    if Z.gt l u then raise Cannot_compare;
-    Interv(l, u)
-  | Interv _, Z -> ty1
-  | Z, Interv _ -> ty2
-  | Z, Z -> Z
-  | No_integral t1, No_integral t2 when Logic_type.equal t1 t2 -> ty1
-  | No_integral _, No_integral _
-  | (Z | Interv _), No_integral _
-  | No_integral _, (Z | Interv _) -> raise Cannot_compare
-
-let join ty1 ty2 = match ty1, ty2 with
-  | Interv(l1, u1), Interv(l2, u2) -> Interv(Z.min l1 l2, Z.max u1 u2)
-  | Interv _, Z | Z, Interv _ | Z, Z -> Z
-  | No_integral t1, No_integral t2 when Logic_type.equal t1 t2 -> ty1
-  | No_integral t, ty | ty, No_integral t when Cil.isLogicRealType t -> ty
-  | No_integral t, _ when Cil.isLogicFloatType t -> ty1
-  | (Z | Interv _), (No_integral _ as ty)
-  | (No_integral _ as ty), (Interv _ | Z) -> 
-    ty
-  | No_integral _, No_integral _ ->
-    Options.fatal "cannot join %a and %a" 
-      pretty_eacsl_typ ty1 
-      pretty_eacsl_typ ty2
-
-let int_to_interv n = 
-  let b = Z.of_int n in
-  Interv (b, b)
-
-(******************************************************************************)
-(** Environments *)
-(******************************************************************************)
-
-module type Typing_env = sig
-  type key
-  type data
-  val add: key -> data -> unit
-  val find: key -> data
-  val mem: key -> bool
+(* Memoization module which retrieves the computed info of some terms. If the
+   info is already computed for a term, it is never recomputed *)
+module Memo: sig
+  val memo: (term -> computed_info) -> term -> computed_info
+  val get: term -> computed_info
   val clear: unit -> unit
-end
+end = struct
 
-module Make_env
-  (Key: sig type t val hash: t -> int end) 
-  (Data: sig type t end):
-  Typing_env with type key = Key.t and type data = Data.t = 
-struct
+  module H = Hashtbl.Make(struct
+    type t = term
+    (* the comparison over terms is the physical equality. It cannot be the
+       structural one (given by [Cil_datatype.Term.equal]) because the very
+       same term can be used in 2 different contexts which lead to different
+       casts.
 
-  type key = Key.t
-  type data = Data.t
+       By construction, there are no physically equal terms in the AST
+       built by Cil. Consequently the memoisation should be fully
+       useless. However the translation of E-ACSL guarded quantification
+       generates new terms (see module {!Quantif}) which must be typed. The term
+       corresponding to the bound variable [x] is actually used twice: once in
+       the guard and once for encoding [x+1] when incrementing it. The
+       memoization is only useful here and indeed prevent the generation of
+       one extra variable in some cases. *)
+    let equal (t1:term) t2 = t1 == t2
+    let hash = Cil_datatype.Term.hash
+  end)
 
-  module H = 
-    Hashtbl.Make(struct include Key let equal (t1:key) t2 = t1 == t2 end)
+  let tbl = H.create 97
 
-  let tbl = H.create 17
-  let add = H.replace tbl
-  let find = H.find tbl
-  let mem = H.mem tbl
+  let get t =
+    try H.find tbl t
+    with Not_found ->
+      Options.fatal
+        "[typing] type of term '%a' was never computed."
+        Printer.pp_term t
+
+  let memo f t =
+    try H.find tbl t
+    with Not_found ->
+      let x = f t in
+      H.add tbl t x;
+      x
+
   let clear () = H.clear tbl
 
 end
 
-module Term_env = Make_env(Term)(struct type t = eacsl_typ * eacsl_typ end)
-module Logic_var_env = Make_env(Logic_var)(struct type t = eacsl_typ end)
+(******************************************************************************)
+(** {2 Coercion rules} *)
+(******************************************************************************)
 
-let generic_typ (which: < f: 'a. 'a * 'a -> 'a >) t =
-  Cil.CurrentLoc.set t.term_loc;
-    if Options.Gmp_only.get () then 
-      let ty = match t.term_type with
-	| Linteger -> Mpz.t ()
-	| Ctype ty when Cil.isIntegralType ty -> Mpz.t ()
-	| Ctype ty -> ty
-	| Ltype _ as ty when Logic_const.is_boolean_type ty -> Mpz.t ()
-	| Ltype _ -> Error.not_yet "typing of user-defined logic type"
-	| Lvar _ -> Error.not_yet "type variable"
-	| Lreal -> TFloat(FLongDouble, [])
-	| Larrow _ -> Error.not_yet "functional type"
-      in
-      which#f (ty, ty)
-    else
-      try 
-	let typs = Term_env.find t in
-	typ_of_eacsl_typ (which#f typs)
-      with Not_found -> 
-	Options.fatal "untyped term %a" Term.pretty t
+let ty_of_logic_ty = function
+  | Linteger -> Gmp
+  | Ctype ty -> (match Cil.unrollType ty with
+    | TInt(ik, _) -> C_type ik
+    | _ -> Other)
+  | Lreal | Larrow _ -> Other
+  | Ltype _ -> Error.not_yet "user-defined logic type"
+  | Lvar _ -> Error.not_yet "type variable"
 
-let typ_of_term = generic_typ (object method f: 'a. 'a * 'a -> 'a = fst end)
-let typ_of_term_operation = 
-  generic_typ (object method f: 'a. 'a * 'a -> 'a = snd end)
-
-let unsafe_set_term t ty =
-  if not (Options.Gmp_only.get ()) then begin
-    assert (not (Term_env.mem t));
-    let ty = eacsl_typ_of_typ ty in
-    Term_env.add t (ty, ty)
-  end
-
-let unsafe_unify ~from logic_v =
+(* Compute the smallest type (bigger than [int]) which can contain the whole
+   interval. It is the \theta operator of the JFLA's paper. *)
+let ty_of_interv ?ctx i =
   try
-    let ty = Logic_var_env.find from in
-    assert (not (Logic_var_env.mem logic_v));
-    Logic_var_env.add logic_v ty
-  with Not_found ->
-    Options.fatal "unknown logic variable %a" Printer.pp_logic_var logic_v
+    let itv_kind =
+      if Ival.is_bottom i then IInt
+      else match Ival.min_and_max i with
+        | Some l, Some u ->
+          let is_pos = Integer.ge l Integer.zero in
+          let lkind = Cil.intKindForValue l is_pos in
+          let ukind = Cil.intKindForValue u is_pos in
+          (* kind corresponding to the interval *)
+          if Cil.intTypeIncluded lkind ukind then ukind else lkind
+        | _, _ -> Kernel.fatal ~current:true "ival: %a" Ival.pretty i
+    in
+    (* convert the kind to [IInt] whenever smaller. *)
+    let kind = if Cil.intTypeIncluded itv_kind IInt then IInt else itv_kind in
+    (* ctx type whenever possible to prevent superfluous casts in the generated
+       code *)
+    (match ctx with
+     | None | Some (Gmp | Other) -> C_type kind
+     | Some (C_type ik as ctx) ->
+       if Cil.intTypeIncluded itv_kind ik then ctx else C_type kind)
+  with Cil.Not_representable ->
+    Gmp
 
-let clear () = 
-  Options.feedback ~dkey ~level:2 "clearing environment.";
-  Term_env.clear (); 
-  Logic_var_env.clear ()
+(* compute a new {!computed_info} by coercing the given type [ty] to the given
+   context [ctx]. [op] is the type for the operator. *)
+let coerce ~ctx ~op ty =
+  if compare ty ctx = 1 then begin
+    (* type larger than the expected context,
+       so we must introduce an explicit cast *)
+    { ty; op; cast = Some ctx }
+  end else
+    (* only add an explicit cast if the context is [Gmp] and [ty] is not *)
+    if ctx = Gmp && ty <> Gmp then { ty; op; cast = Some Gmp }
+    else { ty; op; cast = None }
 
 (******************************************************************************)
-(** Typing rules *)
+(** {2 Type system} *)
 (******************************************************************************)
 
-let type_constant ty = function
-  | Integer(n, _) -> 
-    if Cil.fitsInInt ILongLong n || Cil.fitsInInt IULongLong n then Interv(n, n)
-    else Z
-  | LChr c -> 
-    let n = Cil.charConstToInt c in
-    Interv(n, n)
-  | LStr _ | LWStr _ | LReal _ | LEnum _ -> No_integral ty
+(* generate a context [c]. Take --e-acsl-gmp-only into account iff not
+   [force]. *)
+let mk_ctx ~force c =
+  if force then c
+  else match c with
+  | Other -> Other
+  | Gmp | C_type _ -> if Options.Gmp_only.get () then Gmp else c
 
-let size_of ty =
-  try int_to_interv (Cil.bytesSizeOf ty)
-  with Cil.SizeOfError _ -> eacsl_typ_of_typ Cil.ulongLongType
-
-let align_of ty = int_to_interv (Cil.bytesAlignOf ty)
-
-type offset_ty = Ty_no_offset | Ty_field of eacsl_typ | Ty_index
-
-let type_of_indexed_host = function
-  | No_integral (Ctype ty) as ty_host -> 
-    (match Cil.unrollType ty with
-    | TArray(ty, _, _, _) -> eacsl_typ_of_typ ty
-    | TPtr _ -> ty_host
-    | _ -> assert  false)
-  | _ -> assert false
-
-let rec type_term t = 
-  Cil.CurrentLoc.set t.term_loc;
-  let lty = t.term_type in
-  let get_cty t = match t.term_type with Ctype ty -> ty | _ -> assert false in
-  let dup f x = let y = f x in y, y in
-  let ty, _ as res = match t.term_node with
-    | TConst c -> dup (type_constant lty) c
-    | TLval lv -> dup type_term_lval lv
-    | TSizeOf ty -> dup size_of ty
-    | TSizeOfE t -> 
-      ignore (type_term t);
-      dup size_of (get_cty t)
-    | TSizeOfStr s -> dup int_to_interv (String.length s + 1 (* '\0' *)) 
-    | TAlignOf ty -> dup align_of ty
-    | TAlignOfE t ->
-      ignore (type_term t);
-      dup align_of (get_cty t)
-    | TUnOp(Neg, t) -> 
-      unary_arithmetic
-	(fun l u -> let opp = Z.sub Z.zero in opp u, opp l) t
-    | TUnOp(BNot, t) ->
-      unary_arithmetic
-	(fun l u -> 
-	  let nl = Z.lognot l in
-	  let nu = Z.lognot u in
-	  Z.min nl nu, Z.max nl nu) 
-	t
-    | TUnOp(LNot, t) ->
-      let ty_t = type_term t in
-      let ty = Interv(Z.zero, Z.one) in
-      ty, join ty ty_t
-    | TBinOp(PlusA, t1, t2) -> 
-      let add l1 u1 l2 u2 = Z.add l1 l2, Z.add u1 u2 in
-      binary_arithmetic t.term_type add t1 t2 t
-    | TBinOp((PlusPI | IndexPI | MinusPI | MinusPP), t1, t2) -> 
-      ignore (type_term t1);
-      ignore (type_term t2);
-      let ty = No_integral lty in
-      ty, ty
-    | TBinOp(MinusA, t1, t2) -> 
-      let sub l1 u1 l2 u2 = Z.sub l1 u2, Z.sub u1 l2 in
-      binary_arithmetic t.term_type sub t1 t2 t
-    | TBinOp(Mult, t1, t2) -> signed_rule t.term_type Z.mul t1 t2 t
-    | TBinOp(Div, t1, t2) -> 
-      let div a b = 
-	try Z.c_div a b 
-	with Division_by_zero -> 
-	  (* either the generated code will be dead (e.g. [false && 1/0]) or
-	     it contains a potential RTE and thus it is actually equivalent to
-	     dead code. In any case, any type is correct at this point and we
-	     generate the less restrictive one (0 is always representable) in
-	     order to be as more precise as possible. *)
-	  Z.zero
-      in
-      signed_rule t.term_type div t1 t2 t
-    | TBinOp(Mod, t1, t2) -> 
-      let modu a b =
-	try Z.c_rem a b with Division_by_zero -> Z.zero (* see Div *)
-      in
-      signed_rule t.term_type modu t1 t2 t
-    | TBinOp(Shiftlt, _t1, _t2) | TBinOp(Shiftrt, _t1, _t2) ->
-      Error.not_yet "left/right shift"
-    | TBinOp((Lt | Gt | Le | Ge | Eq | Ne | LAnd | LOr), t1, t2) -> 
-      let ty1 = type_term t1 in
-      let ty2 = type_term t2 in
-      let ty = Interv(Z.zero, Z.one) in
-      ty, join ty (join ty1 ty2)
-    | TBinOp((BAnd | BXor | BOr), _t1, _t2) -> 
-      Error.not_yet "missing binary bitwise operator"
-    | TCastE(ty, t) -> 
-      let ty_t = type_term t in
-      let ty_c = eacsl_typ_of_typ ty in
-      let ty = try meet ty_c ty_t with Cannot_compare -> ty_c in
-      ty, ty (* an alarm is emitted by RTE anyway *)
-    | TAddrOf lv | TStartOf lv -> 
-      ignore (type_term_lval lv);
-      let ty = No_integral lty in
-      ty, ty
-    | Tapp _ -> Error.not_yet "applying logic function"
-    | Tlambda _ -> Error.not_yet "functional"
-    | TDataCons _ -> Error.not_yet "constructor"
-    | Tif(t1, t2, t3) -> 
-      ignore (type_term t1);
-      let ty2 = type_term t2 in
-      let ty3 = type_term t3 in
-      dup (join ty2) ty3
-    | Tat(t, _)
-    | Tbase_addr(_, t) -> dup type_term t
-    | Toffset(_, t) ->
-      ignore (type_term t);
-      let n = Z.div (Bit_utils.max_bit_address ()) (Z.of_int 8) in
-      let ty =
-        try TInt(ikind_of_integer n true, [])
-        with Cil.Not_representable -> Mpz.t ()
-      in
-      dup eacsl_typ_of_typ ty
-    | Tblock_length(_, t) ->
-      ignore (type_term t);
-      let n = Z.div (Bit_utils.max_bit_size ()) (Z.of_int 8) in
-      let ty =
-        try TInt(ikind_of_integer n true, [])
-        with Cil.Not_representable -> Mpz.t ()
-      in
-      dup eacsl_typ_of_typ ty
-    | Tnull -> dup int_to_interv 0
-    | TLogic_coerce(_, t) -> dup type_term t
-    | TCoerce(t, ty) -> 
-      (* Jessie specific *)
-      ignore (type_term t);
-      dup size_of ty
-    | TCoerceE(t1, t2) -> 
-      (* Jessie specific *)
-      ignore (type_term t1);
-      ignore (type_term t2);
-      dup size_of (get_cty t2)
-    | TUpdate _ -> Error.not_yet "functional update"
-    | Ttypeof _ -> Error.not_yet "typeof"
-    | Ttype _ -> Error.not_yet "C type"
-    | Tempty_set -> Error.not_yet "empty tset"
-    | Tunion _ -> Error.not_yet "union of tsets"
-    | Tinter _ -> Error.not_yet "intersection of tsets"
-    | Tcomprehension _ -> Error.not_yet "tset comprehension"
-    | Trange _ -> Error.not_yet "range"
-    | Tlet _ -> Error.not_yet "let binding"
+(* type the term [t] in a context [ctx]. Take --e-acsl-gmp-only into account iff
+   not [force]. *)
+let rec type_term ~force ?ctx t =
+  let ctx = Extlib.opt_map (mk_ctx ~force) ctx in
+  let dup ty = ty, ty in
+  let compute_ctx ?ctx i =
+    (* in order to get a minimal amount of generated casts for operators, the
+       result is typed in the given context [ctx], but not the operands.
+       This function returns a tuple (ctx_of_result, ctx_of_operands) *)
+    match ctx with
+    | None ->
+      (* no context: factorize *)
+      dup (mk_ctx ~force:false (ty_of_interv i))
+    | Some ctx ->
+      mk_ctx ~force:false (ty_of_interv ~ctx i),
+      mk_ctx ~force:false (ty_of_interv i)
   in
-(*  Options.feedback "ADD %a --> %a" Printer.pp_term t pretty_eacsl_typ ty;*)
-  Term_env.add t res;
-  ty
+  let infer t =
+    Cil.CurrentLoc.set t.term_loc;
+    (* this pattern matching implements the formal rules of the JFLA's paper
+       (and of course also covers the missing cases). Also enforce the invariant
+       that every subterm is typed, even if it is not an integer. *)
+    match t.term_node with
+    | TConst (Integer _ | LChr _ | LEnum _)
+    | TSizeOf _
+    | TSizeOfStr _
+    | TAlignOf _ ->
+      let ty =
+        try
+          let i = Interval.infer t in
+          ty_of_interv ?ctx i
+        with Interval.Not_an_integer ->
+          Other
+      in
+      dup ty
+    | TLval tlv ->
+      let ty =
+        try
+          let i = Interval.infer t in
+          ty_of_interv ?ctx i
+        with Interval.Not_an_integer ->
+          Other
+      in
+      type_term_lval tlv;
+      dup ty
 
-and type_term_lval (h, o) =
-  let ty_off = type_term_offset o in
-  let ty_host = type_term_lhost h in
-  match ty_off with
-  | Ty_no_offset -> ty_host
-  | Ty_field ty -> ty
-  | Ty_index -> type_of_indexed_host ty_host
+    | Toffset(_, t')
+    | Tblock_length(_, t')
+    | TSizeOfE t'
+    | TAlignOfE t' ->
+      let ty =
+        try
+          let i = Interval.infer t in
+          (* [t'] must be typed, but it is a pointer *)
+          ignore (type_term ~force:false ~ctx:Other t');
+          ty_of_interv ?ctx i
+        with Interval.Not_an_integer ->
+          assert false (* this term is an integer *)
+      in
+      dup ty
+
+    | TBinOp (MinusPP, t1, t2) ->
+      let ty =
+        try
+          let i = Interval.infer t in
+          (* [t1] and [t2] must be typed, but they are pointers *)
+          ignore (type_term ~force:false ~ctx:Other t1);
+          ignore (type_term ~force:false ~ctx:Other t2);
+          ty_of_interv ?ctx i
+        with Interval.Not_an_integer ->
+          assert false (* this term is an integer *)
+      in
+      dup ty
+
+    | TUnOp (unop, t') ->
+      let ctx_res, ctx =
+        try
+          let i = Interval.infer t in
+          let i' = Interval.infer t' in
+          compute_ctx ?ctx (Ival.join i i')
+        with Interval.Not_an_integer ->
+          dup Other (* real *)
+      in
+      ignore (type_term ~force:false ~ctx t');
+      (match unop with
+      | LNot -> c_int, ctx_res (* converted into [t == 0] in case of GMP *)
+      | Neg | BNot -> dup ctx_res)
+
+    | TBinOp((PlusA | MinusA | Mult | Div | Mod | Shiftlt | Shiftrt), t1, t2) ->
+      let ctx_res, ctx =
+        try
+          let i = Interval.infer t in
+          let i1 = Interval.infer t1 in
+          let i2 = Interval.infer t2 in
+          compute_ctx ?ctx (Ival.join i (Ival.join i1 i2))
+        with Interval.Not_an_integer ->
+          dup Other (* real *)
+      in
+      ignore (type_term ~force ~ctx t1);
+      ignore (type_term ~force ~ctx t2);
+      dup ctx_res
+
+    | TBinOp ((Lt | Gt | Le | Ge | Eq | Ne), t1, t2) ->
+      assert (match ctx with None -> true | Some c -> compare c c_int >= 0);
+      let ctx =
+        try
+          let i1 = Interval.infer t1 in
+          let i2 = Interval.infer t2 in
+          mk_ctx ~force:false (ty_of_interv ?ctx (Ival.join i1 i2))
+        with Interval.Not_an_integer ->
+          Other
+      in
+      ignore (type_term ~force:false ~ctx t1);
+      ignore (type_term ~force:false ~ctx t2);
+      let ty = match ctx with
+        | Other -> c_int
+        | Gmp | C_type _ -> ctx
+      in
+      c_int, ty
+
+    | TBinOp ((LAnd | LOr), t1, t2) ->
+      let ty =
+        try
+          let i1 = Interval.infer t1 in
+          let i2 = Interval.infer t2 in
+          ty_of_interv ?ctx (Ival.join i1 i2)
+        with Interval.Not_an_integer ->
+          Other
+      in
+      (* both operands fit in an int. *)
+      ignore (type_term ~force:false ~ctx:c_int t1);
+      ignore (type_term ~force:false ~ctx:c_int t2);
+      dup ty
+
+    | TBinOp (BAnd, _, _) -> Error.not_yet "bitwise and"
+    | TBinOp (BXor, _, _) -> Error.not_yet "bitwise xor"
+    | TBinOp (BOr, _, _) -> Error.not_yet "bitwise or"
+
+    | TCastE(_, t')
+    | TCoerce(t', _) ->
+      let ctx =
+        try
+          (* compute the smallest interval from the whole term [t] *)
+          let i = Interval.infer t in
+          (* nothing more to do: [i] is already more precise than what we
+             could infer from the arguments of the cast. *)
+          ty_of_interv ?ctx i
+        with Interval.Not_an_integer ->
+          Other
+      in
+      ignore (type_term ~force:false ~ctx t');
+      dup ctx
+
+    | Tif (t1, t2, t3) ->
+      let ctx1 = mk_ctx ~force:true c_int (* an int must be generated *) in
+      ignore (type_term ~force:true ~ctx:ctx1 t1);
+      let i = Interval.infer t in
+      let ctx =
+        try
+          let i2 = Interval.infer t2 in
+          let i3 = Interval.infer t3 in
+          let ctx = ty_of_interv ?ctx (Ival.join i (Ival.join i2 i3)) in
+          mk_ctx ~force:false ctx
+        with Interval.Not_an_integer ->
+          Other
+      in
+      ignore (type_term ~force:false ~ctx t2);
+      ignore (type_term ~force:false ~ctx t3);
+      dup ctx
+
+    | Tat (t, _)
+    | TLogic_coerce (_, t) -> dup (type_term ~force ?ctx t).ty
+
+    | TCoerceE (t1, t2) ->
+      let ctx =
+        try
+          let i = Interval.infer t in
+          let i1 = Interval.infer t1 in
+          let i2 = Interval.infer t2 in
+          ty_of_interv ?ctx (Ival.join i (Ival.join i1 i2))
+        with Interval.Not_an_integer ->
+          Other
+      in
+      ignore (type_term ~force:false ~ctx t1);
+      ignore (type_term ~force:false ~ctx t2);
+      dup ctx
+
+    | TAddrOf tlv
+    | TStartOf tlv ->
+      (* it is a pointer, but subterms must be typed. *)
+      type_term_lval tlv;
+      dup Other
+
+    | Tbase_addr (_, t) ->
+      (* it is a pointer, but subterms must be typed. *)
+      ignore (type_term ~force:false ~ctx:Other t);
+      dup Other
+
+    | TBinOp ((PlusPI | IndexPI | MinusPI), t1, t2) ->
+      (* it is a pointer, while [t2] is a size_t. But both [t1] and [t2] must
+         be typed. *)
+      ignore (type_term ~force:false ~ctx:Other t1);
+      ignore (type_term ~force:true ~ctx:(offset_ty ()) t2);
+      dup Other
+
+    | Tapp(li, _, args) ->
+      let typ_arg lvi arg =
+        let ctx = ty_of_logic_ty lvi.lv_type in
+        ignore (type_term ~force:true ~ctx arg)
+      in
+      List.iter2 typ_arg li.l_profile args;
+      (* [li.l_type is [None] for predicate only: not possible here.
+         Thus using [Extlib.the] is fine *)
+      dup (ty_of_logic_ty (Extlib.the li.l_type))
+
+    | Tunion _ -> Error.not_yet "tset union"
+    | Tinter _ -> Error.not_yet "tset intersection"
+    | Tcomprehension (_,_,_) -> Error.not_yet "tset comprehension"
+    | Trange (_,_) -> Error.not_yet "trange"
+    | Tlet (_,_) -> Error.not_yet "let binding"
+    | Tlambda (_,_) -> Error.not_yet "lambda"
+    | TDataCons (_,_) -> Error.not_yet "datacons"
+    | TUpdate (_,_,_) -> Error.not_yet "update"
+
+    | Tnull
+    | TConst (LStr _ | LWStr _ | LReal _)
+    | Ttypeof _
+    | Ttype _
+    | Tempty_set  -> dup Other
+  in
+  Memo.memo
+    (fun t ->
+      let ty, op = infer t in
+      match ctx with
+      | None -> { ty; op; cast = None }
+      | Some ctx -> coerce ~ctx ~op ty)
+    t
+
+and type_term_lval (host, offset) =
+  type_term_lhost host;
+  type_term_offset offset
 
 and type_term_lhost = function
-  | TVar lv -> 
-    (try Logic_var_env.find lv 
-     with Not_found -> 
-       (* C variable *)
-       match lv.lv_type with
-       | Ctype ty -> eacsl_typ_of_typ ty
-       | _ -> 
-	 Options.fatal "invalid type for logic var %a: %a" 
-	   Logic_var.pretty lv Logic_type.pretty lv.lv_type)
-  | TResult ty -> eacsl_typ_of_typ ty
-  | TMem t -> 
-    let ty = type_term t in
-    (* got a pointer or an array *)
-    match ty with
-    | No_integral (Ctype ty) ->
-      (match Cil.unrollType ty with
-      | TPtr(ty, _) | TArray(ty, _, _, _) -> eacsl_typ_of_typ ty
-      | _ -> assert false)
-    | No_integral _ | Interv _ | Z -> assert false
+  | TVar _
+  | TResult _ -> ()
+  | TMem t -> ignore (type_term ~force:false ~ctx:Other t)
 
 and type_term_offset = function
-  | TNoOffset -> Ty_no_offset
-  | TField(f, o) -> 
-    (match type_term_offset o with
-    | Ty_no_offset -> Ty_field (eacsl_typ_of_typ f.ftype)
-    | Ty_index -> Ty_field (type_of_indexed_host (eacsl_typ_of_typ f.ftype))
-    | Ty_field _ as ty -> ty)
-  | TIndex(t, o) ->
-    ignore (type_term t);
-    ignore (type_term_offset o);
-    Ty_index
-  | TModel _ -> Error.not_yet "model"
+  | TNoOffset -> ()
+  | TField(_, toff)
+  | TModel(_, toff) -> type_term_offset toff
+  | TIndex(t, toff) ->
+    (* [t] is an array index which must fit into offset_ty *)
+    ignore (type_term ~force:true ~ctx:(offset_ty ()) t);
+    type_term_offset toff
 
-and unary_arithmetic op t = 
-  let ty_t = type_term t in
-  let ty = match ty_t with
-    | Interv(l, u) -> 
-      let l, u = op l u in
-      Interv (l, u)
-    | Z -> Z
-    | No_integral _ -> ty_t
+let rec type_predicate p =
+  Cil.CurrentLoc.set p.pred_loc;
+  (* this pattern matching also follows the formal rules of the JFLA's paper *)
+  let op = match p.pred_content with
+    | Pfalse | Ptrue -> c_int
+    | Papp _ -> Error.not_yet "logic function application"
+    | Pseparated _ -> Error.not_yet "\\separated"
+    | Pdangling _ -> Error.not_yet "\\dangling"
+    | Prel(_, t1, t2) ->
+      let ctx =
+        try
+          let i1 = Interval.infer t1 in
+          let i2 = Interval.infer t2 in
+          let i = Ival.join i1 i2 in
+          mk_ctx ~force:false (ty_of_interv ~ctx:c_int i)
+        with Interval.Not_an_integer ->
+          Other
+      in
+      ignore (type_term ~force:false ~ctx t1);
+      ignore (type_term ~force:false ~ctx t2);
+      (match ctx with
+      | Other -> c_int
+      | Gmp | C_type _ -> ctx)
+    | Pand(p1, p2)
+    | Por(p1, p2)
+    | Pxor(p1, p2)
+    | Pimplies(p1, p2)
+    | Piff(p1, p2) ->
+      ignore (type_predicate p1);
+      ignore (type_predicate p2);
+      c_int
+    | Pnot p ->
+      ignore (type_predicate p);
+      c_int
+    | Pif(t, p1, p2) ->
+      let ctx = mk_ctx ~force:true c_int in
+      ignore (type_term ~force:true ~ctx t);
+      ignore (type_predicate p1);
+      ignore (type_predicate p2);
+      c_int
+    | Plet _ -> Error.not_yet "let _ = _ in _"
+
+    | Pforall(bounded_vars, { pred_content = Pimplies(hyps, goal) })
+    | Pexists(bounded_vars, { pred_content = Pand(hyps, goal) }) ->
+      let guards = !compute_quantif_guards_ref p bounded_vars hyps in
+      List.iter
+        (fun (t1, r1, x, r2, t2) ->
+          let i1 = Interval.infer t1 in
+          let i1 = match r1 with
+            | Rlt -> Ival.add_singleton_int Integer.one i1
+            | Rle -> i1
+            | _ -> assert false
+          in
+          let i2 = Interval.infer t2 in
+            (* add one to [i2], since we increment the loop counter one more
+               time before going outside the loop. *)
+          let i2 = match r2 with
+            | Rlt -> i2
+            | Rle -> Ival.add_singleton_int Integer.one i2
+            | _ -> assert false
+          in
+          let i = Ival.join i1 i2 in
+          let ctx = match x.lv_type with
+            | Linteger -> mk_ctx ~force:false (ty_of_interv ~ctx:Gmp i)
+            | Ctype ty ->
+              (match Cil.unrollType ty with
+              | TInt(ik, _) -> C_type ik
+              | ty ->
+                Options.fatal "unexpected type %a for quantified variable %a"
+                  Printer.pp_typ ty
+                  Printer.pp_logic_var x)
+            | lty ->
+              Options.fatal "unexpected type %a for quantified variable %a"
+                Printer.pp_logic_type lty
+                Printer.pp_logic_var x
+          in
+          (* forcing when typing bounds prevents to generate an extra useless
+             GMP variable when --e-acsl-gmp-only *)
+          ignore (type_term ~force:true ~ctx t1);
+          ignore (type_term ~force:true ~ctx t2);
+          Interval.Env.add x i)
+        guards;
+      (type_predicate goal).ty
+
+    | Pinitialized(_, t)
+    | Pfreeable(_, t)
+    | Pallocable(_, t)
+    | Pvalid(_, t)
+    | Pvalid_read(_, t)
+    | Pvalid_function t ->
+      ignore (type_term ~force:false ~ctx:Other t);
+      c_int
+
+    | Pforall _ -> Error.not_yet "unguarded \\forall quantification"
+    | Pexists _ -> Error.not_yet "unguarded \\exists quantification"
+    | Pat(p, _) -> (type_predicate p).ty
+    | Pfresh _ -> Error.not_yet "\\fresh"
+    | Psubtype _ -> Error.not_yet "subtyping relation" (* Jessie specific *)
   in
-  ty, join ty ty_t
-      
-and binary_arithmetic ty op t1 t2 _t =
-  let ty1 = type_term t1 in
-  let ty2 = type_term t2 in
-  let ty = match ty1, ty2 with
-    | Interv(l1, u1), Interv(l2, u2) -> 
-      let l, u = op l1 u1 l2 u2 in
-      Interv (l, u)
-    | No_integral _, _ | _, No_integral _ -> No_integral ty
-    | _, Z | Z, _ -> Z
-  in
-  ty, join ty (join ty1 ty2)
+  coerce ~ctx:c_int ~op c_int
 
-and signed_rule ty op t1 t2 t =
-  (* probably not the most efficient way to compute the result, but the
-     shortest *) 
-  let compute l1 u1 l2 u2 = 
-    let a = op l1 l2 in
-    let b = op l1 u2 in
-    let c = op u1 l2 in
-    let d = op u1 u2 in
-    Z.min a (Z.min b (Z.min c d)), Z.max a (Z.max b (Z.max c d))
-  in
-  binary_arithmetic ty compute t1 t2 t
+let type_term ~force ?ctx t =
+  Options.feedback ~dkey ~level:4 "typing term '%a' in ctx '%a'."
+    Printer.pp_term t (Pretty_utils.pp_opt pretty) ctx;
+  ignore (type_term ~force ?ctx t)
 
-let compute_quantif_guards_ref
-    : (predicate named -> logic_var list -> predicate named -> 
-       (term * relation * logic_var * relation * term) list) ref
-    = Extlib.mk_fun "compute_quantif_guards_ref"
-
-let rec type_predicate_named p = 
-  Cil.CurrentLoc.set p.loc;
-  match p.content with
-  | Pfalse | Ptrue -> ()
-  | Papp _ -> Error.not_yet "logic function application"
-  | Pseparated _ -> Error.not_yet "\\separated"
-  | Pdangling _ -> Error.not_yet "\\dangling"
-  | Prel(_, t1, t2) -> 
-    ignore (type_term t1);
-    ignore (type_term t2)
-  | Pand(p1, p2) | Por(p1, p2) | Pxor(p1, p2) | Pimplies(p1, p2) 
-  | Piff(p1, p2) ->
-    type_predicate_named p1;
-    type_predicate_named p2
-  | Pnot p -> type_predicate_named p
-  | Pif(t, p1, p2) -> 
-    ignore (type_term t);
-    type_predicate_named p1;
-    type_predicate_named p2
-  | Plet _ -> Error.not_yet "let _ = _ in _"
-  | Pforall(bounded_vars, { content = Pimplies(hyps, goal) })
-  | Pexists(bounded_vars, { content = Pand(hyps, goal) }) ->
-    let guards = !compute_quantif_guards_ref p bounded_vars hyps in
-    List.iter
-      (fun (t1, r1, x, r2, t2) -> 
-	let ty1 = type_term t1 in
-	let ty1 = match ty1, r1 with
-	  | Interv(l, u), Rlt -> Interv(Z.add l Z.one, Z.add u Z.one)
-	  | Interv(l, u), Rle -> Interv(l, u)
-	  | Z, (Rlt | Rle) -> Z
-	  | _, _ -> assert false
-	in
-	let ty2 = type_term t2 in
-	(* add one here, since we increment the loop counter one more time
-	   before going out the loop. *)
-	let ty2 = match ty2, r2 with
-	  | Interv(l, u), Rlt -> Interv(l, u)
-	  | Interv(l, u), Rle -> Interv(Z.add l Z.one, Z.add u Z.one)
-	  | Z, (Rlt | Rle) -> Z
-	  | _, _ -> assert false
-	in
-	Logic_var_env.add x (join ty1 ty2))
-      guards;
-    type_predicate_named hyps;
-    type_predicate_named goal
-  | Pforall _ -> Error.not_yet "unguarded \\forall quantification"
-  | Pexists _ -> Error.not_yet "unguarded \\exists quantification"
-  | Pat(p, _) -> type_predicate_named p
-  | Pfresh _ -> Error.not_yet "\\fresh"
-  | Psubtype _ -> Error.not_yet "subtyping relation" (* Jessie specific *)
-  | Pinitialized (_, x)
-  | Pfreeable(_, x)
-  | Pallocable(_, x)
-  | Pvalid(_, x)
-  | Pvalid_read(_, x) -> ignore (type_term x)
-
-let type_term t = 
-  if not (Options.Gmp_only.get ()) then begin
-    Options.feedback ~dkey ~level:4 "typing term %a." Printer.pp_term t;
-    let ty = type_term t in
-    Options.debug ~dkey ~level:4 "got %a." pretty_eacsl_typ ty;
-  end
-
-let type_named_predicate ?(must_clear=true) p = 
-  if not (Options.Gmp_only.get ()) then begin
-    Options.feedback ~dkey ~level:3 "typing predicate %a." 
-      Printer.pp_predicate_named p;
-    if must_clear then clear ();
-    type_predicate_named p
-  end
+let type_named_predicate ?(must_clear=true) p =
+  Options.feedback ~dkey ~level:3 "typing predicate '%a'."
+    Printer.pp_predicate p;
+  if must_clear then begin
+    Interval.Env.clear ();
+    Memo.clear ()
+  end;
+  ignore (type_predicate p)
 
 (******************************************************************************)
-(** Subtyping *)
+(** {2 Getters} *)
 (******************************************************************************)
 
-(* convert [e] in a way that it is compatible with the given typing context. *)
-let context_sensitive ~loc ?name env ctx is_mpz_string t_opt e = 
-  let ty = Cil.typeOf e in
-(*  Options.feedback "exp %a in context %a" 
-    Printer.pp_exp e Printer.pp_typ ctx;*)
-  let mk_mpz e = 
-    let _, e, env = 
-      Env.new_var 
-	~loc
-	?name
-	env
-	t_opt
-	(Mpz.t ())
-	(fun lv v -> [ Mpz.init_set ~loc (Cil.var lv) v e ])
-    in
-    e, env
-  in
-  let do_int_ctx ty =
-    (* handle a C-integer context *)
-    let e, env = if is_mpz_string then mk_mpz e else e, env in
-    if (Mpz.is_t ty || is_mpz_string) then
-      (* we get an mpz, but it fits into a C integer: convert it *)
-      let fname, new_ty = 
-	if Cil.isSignedInteger ty then 
-	  "__gmpz_get_si", Cil.longType
-	else
-	  "__gmpz_get_ui", Cil.ulongType 
-      in
-      let _, e, env = 
-	Env.new_var
-	  ~loc
-	  ?name
-	  env
-	  None
-	  new_ty
-	  (fun v _ -> [ Misc.mk_call ~loc ~result:(Cil.var v) fname [ e ] ])
-      in
-      e, env
-    else
-      (if Cil.isIntegralType ctx && Cil.isIntegralType ty then 
-	  Cil.mkCast e (Cil.arithmeticConversion ctx ty)
-       else
-	  e),
-      env
-  in
-  if Mpz.is_t ctx then
-    if Mpz.is_t ty then
-      e, env
-    else
-      (* Convert the C integer into a mpz. 
-	 Remember: very long integer constants have been temporary converted
-	 into strings;
-	 also possible to get a non integralType (or Mpz.t) with a non-one in
-	 the case of \null *)
-      let e = 
-	if Cil.isIntegralType ty || is_mpz_string then e
-	else Cil.mkCast e Cil.longType (* \null *)
-      in
-      mk_mpz e
-  else
-    do_int_ctx ty
+let get_integer_ty t = (Memo.get t).ty
+let get_integer_op t = (Memo.get t).op
+let get_integer_op_of_predicate p = (type_predicate p).op
 
-let principal_type t1 t2 = 
-  let ty1 = typ_of_term t1 in
-  let ty2 = typ_of_term t2 in
-  (* possible to get an integralType (or Mpz.t) from a non-one in the case of
-     \null *)
-  if Cil.isIntegralType ty1 then
-    if Cil.isIntegralType ty2 then Cil.arithmeticConversion ty1 ty2
-    else if Mpz.is_t ty2 then ty2 else ty1
-  else if Mpz.is_t ty1 then
-    if Cil.isIntegralType ty2 || Mpz.is_t ty2 then ty1 else ty2
-  else 
-    ty2
+(* {!typ_of_integer}, but handle the not-integer cases. *)
+let extract_typ t ty =
+  try typ_of_integer_ty ty
+  with Not_an_integer ->
+    let lty = t.term_type in
+    if Cil.isLogicRealType lty then TFloat(FLongDouble, [])
+    else if Cil.isLogicFloatType lty then Logic_utils.logicCType lty
+    else
+      Kernel.fatal "unexpected types %a and %a for term %a"
+        Printer.pp_logic_type lty
+        pretty ty
+        Printer.pp_term t
+
+let get_typ t =
+  let info = Memo.get t in
+  extract_typ t info.ty
+
+let get_op t =
+  let info = Memo.get t in
+  extract_typ t info.op
+
+let get_cast t =
+  let info = Memo.get t in
+  try Extlib.opt_map typ_of_integer_ty info.cast
+  with Not_an_integer -> None
+
+let get_cast_of_predicate p =
+  let info = type_predicate p in
+  try Extlib.opt_map typ_of_integer_ty info.cast
+  with Not_an_integer -> assert false
+
+let clear = Memo.clear
 
 (*
 Local Variables:

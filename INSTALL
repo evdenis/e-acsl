@@ -30,8 +30,8 @@
   ./configure --prefix C:/windows/path/with/direct/slash && make && make install
 
 4) Optionally, test your installation by running:
-   frama-c.byte -e-acsl tests/e-acsl-runtime/true.i -then-on e-acsl -print
-   frama-c -e-acsl tests/e-acsl-runtime/true.i -then-on e-acsl -print
+   frama-c.byte -e-acsl tests/runtime/true.i -then-last -print
+   frama-c -e-acsl tests/runtime/true.i -then-last -print
 
 See below for more detailed and specific instructions.
 
@@ -39,15 +39,8 @@ See below for more detailed and specific instructions.
 				  REQUIREMENTS
 ===============================================================================
 
-- Frama-C = Magnesium-20151002
+- Frama-C = Silicon-20161101
   (no warranty that this plug-in works with a more recent version of Frama-C)
-
-- The native version of the plug-in is only available if native dynamic linking
-  feature of OCaml is available on your system (see Frama-C User Manual, 
-  Section 3.1). 
-- Optionally, the GMP library >= 4.3
-  It is required to run the tests and to run some generated programs, 
-  but not to run the plug-in through Frama-C.
 
 ===============================================================================
 				 CONFIGURATION
@@ -82,29 +75,6 @@ It is possible to install in a given directory by setting
 the DESTDIR variable: "make install DESTDIR=/tmp" installs Frama-C in
 sub-directories of /tmp.
 
-The following files are installed.
-
-Object files: (usually in `frama-c -print-plugin-path`)
--------------
-- E_ACSL.cmi
-- E_ACSL.cmo
-- E_ACSL.cmxs (only if native dynamic linking of OCaml is available)
-
-Shared files: (usually in `frama-c -print-share-path`/e-acsl)
--------------
-- e_acsl.[ch]
-- e_acsl_gmp.h
-- e_acsl_gmp_types.h
-- memory_model/e_acsl_bittree.[ch]
-- memory_model/e_acsl_mmodel.[ch]
-- memory_model/e_acsl_mmodel_api.[h]
-
-Manuals: (usually in `frama-c -print-share-path`/manuals)
---------
-- e-acsl.pdf
-- e-acsl-implementation.pdf
-- e-acsl-manual.pdf
-
 ===============================================================================
 			      CUSTOM INSTALLATION
 ===============================================================================
@@ -126,10 +96,10 @@ FRAMAC_PLUGIN: absolute path of the Frama-C plug-in directory.
 This step is optional.
 
 Test your installation by running:
-  frama-c.byte -e-acsl tests/e-acsl-runtime/true.i -then-on e-acsl -print
-  frama-c -e-acsl tests/e-acsl-runtime/true.i -then-on e-acsl -print
+  frama-c.byte -e-acsl tests/runtime/true.i -then-last -print
+  frama-c -e-acsl tests/runtime/true.i -then-last -print
 
-The second command only works if native dynamic linking of OCaml is available 
+The second command only works if native dynamic linking of OCaml is available
 on your system.
 
 ===============================================================================

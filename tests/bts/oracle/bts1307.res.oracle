@@ -1,0 +1,11 @@
+tests/bts/bts1307.i:14:[kernel] warning: Floating-point constant 0.4 is not represented exactly. Will use 0x1.999999999999ap-2. See documentation for option -warn-decimal-float
+[e-acsl] beginning translation.
+FRAMAC_SHARE/libc/stdlib.h:160:[kernel] warning: No code nor implicit assigns clause for function calloc, generating default assigns from the prototype
+tests/bts/bts1307.i:23:[e-acsl] warning: approximating a real number by a float
+tests/bts/bts1307.i:23:[e-acsl] warning: approximating a real number by a float
+tests/bts/bts1307.i:11:[e-acsl] warning: approximating a real number by a float
+[e-acsl] translation done in project "e-acsl".
+FRAMAC_SHARE/e-acsl/e_acsl.h:43:[value] warning: function __e_acsl_assert: precondition got status unknown.
+[value] user error: type long double not implemented. Using double instead
+tests/bts/bts1307.i:23:[value] warning: function bar, behavior UnderEstimate_Motoring: postcondition got status unknown.
+tests/bts/bts1307.i:23:[value] warning: function __gen_e_acsl_bar, behavior UnderEstimate_Motoring: postcondition got status unknown.

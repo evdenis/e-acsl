@@ -32,7 +32,7 @@ end
 module Translate: sig
   exception No_simple_translation of term
   val term_to_exp: typ option -> term -> exp
-(** @raise Typing_error when the given term cannot be typed (something wrong
+(** @raise New_typing_error when the given term cannot be typed (something wrong
     happends with this term)
     @raise Not_yet when the given term contains an unsupported construct.
     @raise No_simple_translation when the given term cannot be translated into

@@ -40,7 +40,7 @@ check_plugin(e_acsl,PLUGIN_RELATIVE_PATH(plugin_file),
 
 plugin_require(e_acsl,rtegen)
 
-# restrict the plug-in dependency checking to external plug-in configuration 
+# restrict the plug-in dependency checking to external plug-in configuration
 m4_ifndef([FRAMAC_MAIN_AUTOCONF],[check_plugin_dependencies],[])
 
 # Check Frama-C version
@@ -51,25 +51,27 @@ AC_MSG_RESULT($FRAMAC_VERSION)
 
 VERSION_NUMBER=`echo $FRAMAC_VERSION | sed -n -e 's/[[a-zA-Z]]\+-\([[0-9]]\+\).*/\1/p'`
 EXTRA_VERSION_NUMBER=`echo $FRAMAC_VERSION | sed -n -e 's/[[a-zA-Z]]\+-[[0-9]]\+-\(.*\)/\1/p'`
-REQUIRED_NUMBER=20151002
-REQUIRED_NAME=Magnesium
+REQUIRED_NUMBER=20161101
+REQUIRED_NAME=Silicon
 
 case $FRAMAC_VERSION in
-  # $REQUIRED_NAME-$REQUIRED_NUMBER+dev*)
-  #   # at the time being, must use the Frama-C development version
-  #   ;;
-  $REQUIRED_NAME-$REQUIRED_NUMBER*)
-    if test -n "$EXTRA_VERSION_NUMBER"; then
-      AC_MSG_WARN(no guarantee of compatibility with your Frama-C custom \
-version of $REQUIRED_NAME)
-    fi;;
+  $REQUIRED_NAME-$REQUIRED_NUMBER+dev*)
+    # at the time being, must use the Frama-C development version
+    ;;
+#   $REQUIRED_NAME-$REQUIRED_NUMBER*)
+#     if test -n "$EXTRA_VERSION_NUMBER"; then
+#       AC_MSG_WARN(no guarantee of compatibility with your Frama-C custom \
+# version of $REQUIRED_NAME)
+#     fi;;
   *)
-    if test "$VERSION_NUMBER" -lt "$REQUIRED_NUMBER"; then
+    if test $VERSION_NUMBER -lt $REQUIRED_NUMBER; then
       AC_MSG_ERROR(Frama-C version must be at least \
 $REQUIRED_NAME-$REQUIRED_NUMBER.)
     else
-      AC_MSG_WARN(Frama-C version is more recent than $REQUIRED_NAME: \
+      if test $VERSION_NUMBER -gt $REQUIRED_NUMBER; then
+        AC_MSG_WARN(Frama-C version is more recent than $REQUIRED_NAME: \
 use it at your own risk)
+      fi
     fi;;
 esac
 
@@ -89,28 +91,54 @@ MAY_RUN_TESTS=yes
 
 AC_CHECK_HEADERS([stdio.h],[HAVE_STDIO_H=yes],)
 
-# not sure it can actually happens:
-# look like the configure stops on error if no C compiler detected
+# not sure it can actually happen:
+# looks like configure stops on error if no C compiler detected
 if test -z $HAVE_STDIO_H; then
   MAY_RUN_TESTS=no
   AC_MSG_WARN([stdio.h missing: non-regression tests unavailable.])
 fi
 
-# GMP library
-#############
+# Doxygen
+#########
 
-AC_CHECK_LIB(gmp,__gmpz_init,HAVE_GMP=yes,) # also set LIBS
+AC_CHECK_PROG(DOXYGEN,doxygen,doxygen,no)
+AC_CHECK_PROG(HAVE_DOT,dot,yes,no)
+AC_OUTPUT(PLUGIN_RELATIVE_PATH(doc/doxygen/doxygen.cfg), [  ])
 
-if test -z $HAVE_GMP; then
-  MAY_RUN_TESTS=no
-  AC_MSG_WARN([GMP library missing: non-regression tests unavailable.])
-fi
+# GMP
+#####
+AC_ARG_ENABLE(full-gmp,
+    AS_HELP_STRING([--enable-full-gmp],
+    ["Disable runtime assertions in the RTL"]),
+    [FULL_GMP="yes"],[FULL_GMP="no"])
 
 #######################
 # Generating Makefile #
 #######################
 
+AC_SUBST(OPTIMIZED_RTL)
 AC_SUBST(MAY_RUN_TESTS)
 AC_SUBST(OCAMLVERSION)
+AC_SUBST(FULL_GMP)
 
 write_plugin_config(Makefile)
+
+###############################
+# Configure contrib libraries #
+###############################
+
+m4_ifndef([plugin_dir], [
+  m4_define([plugin_dir],[./])
+])
+
+# Configure libgmp
+if test "$FULL_GMP" = yes; then
+  AC_MSG_NOTICE([Configure libgmp])
+  (cd plugin_dir/contrib/libgmp && ./configure)
+fi
+
+# Configure libjemalloc
+AC_MSG_NOTICE([Configure libjemalloc])
+(cd plugin_dir/contrib/libjemalloc && ./autogen.sh \
+  --with-jemalloc-prefix="__e_acsl_native_" \
+  --with-private-namespace="__e_acsl_hidden_")

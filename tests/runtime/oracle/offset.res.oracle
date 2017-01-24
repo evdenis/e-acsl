@@ -1,0 +1,13 @@
+[e-acsl] beginning translation.
+FRAMAC_SHARE/libc/stdlib.h:160:[kernel] warning: No code nor implicit assigns clause for function calloc, generating default assigns from the prototype
+[e-acsl] translation done in project "e-acsl".
+tests/runtime/offset.c:39:[value] warning: assertion got status unknown.
+FRAMAC_SHARE/e-acsl/e_acsl.h:43:[value] warning: function __e_acsl_assert: precondition got status unknown.
+tests/runtime/offset.c:40:[value] warning: assertion got status unknown.
+tests/runtime/offset.c:41:[value] warning: assertion got status unknown.
+tests/runtime/offset.c:43:[value] warning: assertion got status unknown.
+tests/runtime/offset.c:44:[value] warning: assertion got status unknown.
+tests/runtime/offset.c:49:[value] warning: assertion got status unknown.
+tests/runtime/offset.c:51:[value] warning: assertion got status unknown.
+tests/runtime/offset.c:53:[value] warning: assertion got status unknown.
+tests/runtime/offset.c:55:[value] warning: assertion got status unknown.

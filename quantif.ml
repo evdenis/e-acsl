@@ -24,20 +24,20 @@ open Cil_types
 open Cil
 open Cil_datatype
 
-let named_predicate_to_exp_ref
-    : (kernel_function -> Env.t -> predicate named -> exp * Env.t) ref
+let predicate_to_exp_ref
+    : (kernel_function -> Env.t -> predicate -> exp * Env.t) ref
     = Extlib.mk_fun "named_predicate_to_exp_ref"
 
 let term_to_exp_ref
-    : (kernel_function -> Env.t -> typ option -> term -> exp * Env.t) ref
+    : (kernel_function -> Env.t -> term -> exp * Env.t) ref
     = Extlib.mk_fun "term_to_exp_ref"
 
 let compute_quantif_guards quantif bounded_vars hyps =
   let error msg pp x =
-    let msg1 = Pretty_utils.sfprintf msg pp x in
+    let msg1 = Format.asprintf msg pp x in
     let msg2 =
-      Pretty_utils.sfprintf "@[ in quantification@ %a@]"
-        Printer.pp_predicate_named quantif
+      Format.asprintf "@[ in quantification@ %a@]"
+        Printer.pp_predicate quantif
     in
     Error.untypable (msg1 ^ msg2)
   in
@@ -58,8 +58,8 @@ let compute_quantif_guards quantif bounded_vars hyps =
       else error "@[invalid binder %a@]" Printer.pp_term t
     | _ -> error "@[invalid binder %a@]" Printer.pp_term t
   in
-  let rec parse acc vars p = match p.content with
-    | Pand(p, { content = Prel((Rlt | Rle) as r, t1, t2) }) ->
+  let rec parse acc vars p = match p.pred_content with
+    | Pand(p, { pred_content = Prel((Rlt | Rle) as r, t1, t2) }) ->
       (* && is left-associative in the AST *)
       let acc, partial, vars = parse acc vars p in
       (match partial with
@@ -82,7 +82,7 @@ let compute_quantif_guards quantif bounded_vars hyps =
     | Prel((Rlt | Rle) as r, t1, t2) ->
       (* left-most predicate: the searched variable is [t2] *)
       left_term acc vars (t1, r) t2
-    | _ -> error "@[invalid guard %a@]" Printer.pp_predicate_named p
+    | _ -> error "@[invalid guard %a@]" Printer.pp_predicate p
   in
   let acc, partial, vars = parse [] bounded_vars hyps in
   (match partial with
@@ -93,14 +93,14 @@ let compute_quantif_guards quantif bounded_vars hyps =
   | [] -> ()
   | _ :: _ ->
     let msg = 
-      Pretty_utils.sfprintf
+      Format.asprintf
 	"@[unguarded variable%s %tin quantification@ %a@]" 
 	(if List.length vars = 1 then "" else "s") 
 	(fun fmt -> 
 	  List.iter
 	    (fun v -> Format.fprintf fmt "@[%a @]" Printer.pp_logic_var v) 
 	    vars)
-	Printer.pp_predicate_named quantif
+	Printer.pp_predicate quantif
     in
     Error.untypable msg);
   List.rev acc
@@ -119,7 +119,7 @@ let convert kf env loc is_forall p bounded_vars hyps goal =
     if is_forall then o, z, (fun x -> x) 
     else z, o, (fun e -> new_exp ~loc:e.eloc (UnOp(LNot, e, intType)))
   in
-  let named_predicate_to_exp = !named_predicate_to_exp_ref in
+  let named_predicate_to_exp = !predicate_to_exp_ref in
   let term_to_exp = !term_to_exp_ref in
   (* universal quantification over integers (or a subtype of integer) *)
   let guards = compute_quantif_guards p bounded_vars hyps in
@@ -163,55 +163,72 @@ let convert kf env loc is_forall p bounded_vars hyps goal =
 	 stmts *)
       [ mkStmt ~valid_sid:true (Block blk) ], env
     | (t1, rel1, logic_x, rel2, t2) :: tl ->
+      let ctx =
+        let ty1 = Typing.get_integer_ty t1 in
+        let ty2 = Typing.get_integer_ty t2 in
+        Typing.join ty1 ty2
+      in
       let t_plus_one t =
-	Logic_const.term ~loc
-	  (TBinOp(PlusA, t, Logic_const.tinteger ~loc 1))
-	  Linteger
+        Logic_const.term ~loc
+          (TBinOp(PlusA, t, Logic_const.tinteger ~loc 1))
+          Linteger
       in
       let t1 = match rel1 with
-	| Rlt -> 
-	  let t = t_plus_one t1 in
-	  Typing.type_term t;
-	  t
-	| Rle -> t1
-	| Rgt | Rge | Req | Rneq -> assert false
+        | Rlt ->
+          let t = t_plus_one t1 in
+          Typing.type_term ~force:true ~ctx t;
+          t
+        | Rle -> t1
+        | Rgt | Rge | Req | Rneq -> assert false
       in
       let t2_one, bop2 = match rel2 with
-	| Rlt -> t2, Lt
-	| Rle -> 
-	  (* we increment the loop counter one more time (at the end of the
-	     loop). Thus to prevent  overflow, check the type of [t2 + 1]
-	     instead of [t2]. *) 
-	  t_plus_one t2, Le
-	| Rgt | Rge | Req | Rneq -> assert false
+        | Rlt -> t2, Lt
+        | Rle ->
+          (* we increment the loop counter one more time (at the end of the
+             loop). Thus to prevent overflow, check the type of [t2+1]
+             instead of [t2]. *)
+          t_plus_one t2, Le
+        | Rgt | Rge | Req | Rneq -> assert false
       in
-      Typing.type_term t2_one;
-      let ty = Typing.principal_type t1 t2_one in
+      Typing.type_term ~force:true ~ctx t2_one;
+      let ctx_one =
+        let ty1 = Typing.get_integer_ty t1 in
+        let ty2 = Typing.get_integer_ty t2_one in
+        Typing.join ty1 ty2
+      in
+      let ty =
+        try Typing.typ_of_integer_ty ctx_one
+        with Typing.Not_an_integer -> assert false
+      in
       (* loop counter corresponding to the quantified variable *)
       let var_x, x, env = Env.Logic_binding.add ~ty env logic_x in
       let lv_x = var var_x in
-      let env = 
-	if Mpz.is_t ty then Env.add_stmt env (Mpz.init ~loc x) else env 
+      let env = match ctx_one with
+        | Typing.C_type _ -> env
+        | Typing.Gmp -> Env.add_stmt env (Gmpz.init ~loc x)
+        | Typing.Other -> assert false
       in
-      let llv = cvar_to_lvar var_x in
-      if not (Mpz.is_t ty) then Typing.unsafe_unify ~from:logic_x llv;
       (* build the inner loops and loop body *)
       let body, env = mk_for_loop env tl in
       (* initialize the loop counter to [t1] *)
-      let e1, env = term_to_exp kf (Env.push env) (Some ty) t1 in
-      let init_blk, env = 
-	Env.pop_and_get 
-	  env
-	  (Mpz.affect ~loc:e1.eloc lv_x x e1)
-	  ~global_clear:false
-	  Env.Middle
+      let e1, env = term_to_exp kf (Env.push env) t1 in
+      let init_blk, env =
+        Env.pop_and_get
+          env
+          (Gmpz.affect ~loc:e1.eloc lv_x x e1)
+          ~global_clear:false
+          Env.Middle
       in
       (* generate the guard [x bop t2] *)
       let stmts_block b = [ mkStmt ~valid_sid:true (Block b) ] in
-      let tlv = Logic_const.tvar ~loc llv in
-      let guard = Logic_const.term ~loc (TBinOp(bop2, tlv, t2)) Linteger in
-      Typing.type_term guard;
-      let guard_exp, env = term_to_exp kf (Env.push env) (Some intType) guard in
+      let tlv = Logic_const.tvar ~loc logic_x in
+      let guard =
+        (* must copy [t2] to force being typed again *)
+        Logic_const.term ~loc
+          (TBinOp(bop2, tlv, { t2 with term_node = t2.term_node } )) Linteger
+      in
+      Typing.type_term ~force:true ~ctx:Typing.c_int guard;
+      let guard_exp, env = term_to_exp kf (Env.push env) guard in
       let break_stmt = mkStmt ~valid_sid:true (Break guard_exp.eloc) in
       let guard_blk, env =
 	Env.pop_and_get
@@ -228,12 +245,12 @@ let convert kf env loc is_forall p bounded_vars hyps goal =
       (* increment the loop counter [x++] *)
       let tlv_one = t_plus_one tlv in
       (* previous typing ensures that [x++] fits type [ty] *)
-      Typing.unsafe_set_term tlv_one ty;
-      let incr, env = term_to_exp kf (Env.push env) (Some ty) tlv_one in
+      Typing.type_term ~force:true ~ctx:ctx_one tlv_one;
+      let incr, env = term_to_exp kf (Env.push env) tlv_one in
       let next_blk, env = 
 	Env.pop_and_get
 	  env
-	  (Mpz.affect ~loc:incr.eloc lv_x x incr)
+	  (Gmpz.affect ~loc:incr.eloc lv_x x incr)
 	  ~global_clear:false
 	  Env.Middle
       in
@@ -264,12 +281,12 @@ let convert kf env loc is_forall p bounded_vars hyps goal =
   res, env
 
 let quantif_to_exp kf env p = 
-  let loc = p.loc in
-  match p.content with
-  | Pforall(bounded_vars, { content = Pimplies(hyps, goal) }) -> 
+  let loc = p.pred_loc in
+  match p.pred_content with
+  | Pforall(bounded_vars, { pred_content = Pimplies(hyps, goal) }) -> 
     convert kf env loc true p bounded_vars hyps goal
   | Pforall _ -> Error.not_yet "unguarded \\forall quantification"
-  | Pexists(bounded_vars, { content = Pand(hyps, goal) }) -> 
+  | Pexists(bounded_vars, { pred_content = Pand(hyps, goal) }) -> 
     convert kf env loc false p bounded_vars hyps goal
   | Pexists _ -> Error.not_yet "unguarded \\exists quantification"
   | _ -> assert false

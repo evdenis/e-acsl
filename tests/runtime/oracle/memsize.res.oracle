@@ -1,0 +1,5 @@
+[e-acsl] beginning translation.
+FRAMAC_SHARE/libc/stdlib.h:160:[kernel] warning: No code nor implicit assigns clause for function calloc, generating default assigns from the prototype
+[e-acsl] translation done in project "e-acsl".
+tests/runtime/memsize.c:14:[value] warning: assertion got status unknown.
+tests/runtime/memsize.c:16:[value] warning: assertion got status invalid (stopping propagation).

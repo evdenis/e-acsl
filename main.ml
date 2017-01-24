@@ -54,7 +54,7 @@ let unmemoized_extend_ast () =
     let share = Options.Share.dir ~error:true () in
     Options.feedback ~level:3 "setting kernel options for E-ACSL.";
     Kernel.CppExtraArgs.add
-      (Pretty_utils.sfprintf " -DE_ACSL_MACHDEP=%s -I%s/memory_model"
+      (Format.asprintf " -DE_ACSL_MACHDEP=%s -I%s/memory_model"
          (Kernel.Machdep.get ())
          share);
     Kernel.Keep_unused_specified_functions.off ();
@@ -64,7 +64,7 @@ let unmemoized_extend_ast () =
         (File.NeedCPP
            (s,
             ppc
-            ^ Pretty_utils.sfprintf " -I%s" share,
+            ^ Format.asprintf " -I%s" share,
             ppk))
     in
     List.iter register (Misc.library_files ())
@@ -89,7 +89,7 @@ E-ACSL is going to work on a copy.";
       Project.create_by_copy
         ~last:false
 	~selection
-	(Pretty_utils.sfprintf "%s for E-ACSL" name)
+	(Format.asprintf "%s for E-ACSL" name)
     in
     Project.on prj
       (fun () ->
@@ -152,7 +152,7 @@ let generate_code =
 	    Project.on
 	      dup_prj
 	      (fun () ->
-               Mpz.init_t ();
+                Gmpz.init_t ();
                 Mmodel_analysis.reset ();
 		let visit prj = Visit.do_visit ~prj true in
 		let prj = File.create_project_from_visitor name visit in
@@ -165,6 +165,9 @@ let generate_code =
 		  ~project:prj
 		  ();
 		Resulting_projects.mark_as_computed ();
+                Project.copy
+                  ~selection:(State_selection.singleton Kernel.Files.self)
+                  prj;
 		prj)
 	      ()
 	  in
@@ -188,7 +191,7 @@ let predicate_to_exp =
     ~journalize:false
     "predicate_to_exp"
     (Datatype.func2
-       Kernel_function.ty Cil_datatype.Predicate_named.ty Cil_datatype.Exp.ty)
+       Kernel_function.ty Cil_datatype.Predicate.ty Cil_datatype.Exp.ty)
     Translate.predicate_to_exp
 
 let add_e_acsl_library _files = 
@@ -239,7 +242,7 @@ let main () =
     if Options.Check.get () then
       apply_on_e_acsl_ast
         (fun () ->
-          Mpz.init_t ();
+          Gmpz.init_t ();
           ignore (check ()))
         ()
 

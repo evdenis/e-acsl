@@ -1,0 +1,11 @@
+[e-acsl] beginning translation.
+FRAMAC_SHARE/libc/stdlib.h:160:[kernel] warning: No code nor implicit assigns clause for function calloc, generating default assigns from the prototype
+[e-acsl] translation done in project "e-acsl".
+tests/bts/bts1395.i:8:[value] warning: detected recursive call
+                 (__gen_e_acsl_fact <- fact :: tests/bts/bts1395.i:6 <-
+                                       __gen_e_acsl_fact :: tests/bts/bts1395.i:12 <-
+                                       main)
+                 Use -val-ignore-recursive-calls to ignore (beware this will make the analysis
+                 unsound)
+[value] user error: Degeneration occurred:
+                    results are not correct for lines of code that can be reached from the degeneration point.

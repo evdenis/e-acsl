@@ -33,33 +33,81 @@
 /*                                                                          */
 /****************************************************************************/
 
+/*! ***********************************************************************
+ * \file   e_acsl_printf.h
+ * \brief Malloc and stdio free implementation printf.
+ *
+ * Supported format strings:
+ * - Flag characters:
+ *     - 0       - the following value will be is zero-padded.
+ *
+ * - Field width:
+ *     - Optional positive decimal integer following flag characters.
+ *
+ * - Length modifier:
+ *     - l       - the following integer conversion corresponds to a long int or
+ *                  unsigned long int argument.
+ *
+ * - Standard conversion specifiers:
+ *    - d       - signed integers.
+ *    - u       - unsigned integers.
+ *    - f       - floating point numbers. Floating point numbers do not support
+ *    -             precision specification.
+ *    - x,X     - hexadecimal numbers.
+ *    - p       - void pointers.
+ *
+ * - Non-standard conversion specifiers:
+ *     - a       - memory-address.
+ *     - b, B    - print field width bits of a number left-to-right (b) or
+ *      right-to-left (B). Unless specified field-width of 8 is used. Bits
+ *      over a 64-bit boundary are ignored.
+ *     - v, V    - print first field width bits of a memory region given by a
+ *      void pointer left-to-right (v) or right-to-left (V). Unless specified
+ *      field-width of 8 is used.
+***************************************************************************/
+
+#ifndef E_ACSL_PRINTF
+#define E_ACSL_PRINTF
+
+#include "e_acsl_syscall.h"
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <string.h>
 #include <unistd.h>
 #include <limits.h>
+#include <sys/stat.h>
 
 // For PATH_MAX in Linux
 #ifdef __linux__
-  #include <linux/limits.h>
+#  include <linux/limits.h>
 #endif
 
-static void printf(char *fmt, ...);
+/* ****************** */
+/* Public API         */
+/* ****************** */
 
-static void eprintf(char *fmt, ...);
+/* Replacement for printf with support for the above specifiers */
+static int printf(char *fmt, ...);
 
-static void dprintf(int fd, char *fmt, ...);
+/* Same as printf but write to a string buffer */
+static int sprintf(char* s, char *fmt, ...);
 
-static void sprintf(char* s,char *fmt, ...);
+/* Same as printf but write to the error stream. */
+static int eprintf(char *fmt, ...);
 
-static void vabort(char *fmt, ...);
+/* Same as printf but write to a file descriptor. */
+static int dprintf(int fd, char *fmt, ...);
+
+/* ****************** */
+/* Implementation     */
+/* ****************** */
 
 typedef void (*putcf) (void*,char);
 
+/* Unsigned long integers to string conversion (%u) */
 static void uli2a(unsigned long int num, unsigned int base, int uc,char * bf) {
   int n=0;
-  unsigned int d=1;
+  unsigned long int d=1;
   while (num/d >= base)
     d*=base;
   while (d!=0) {
@@ -74,6 +122,43 @@ static void uli2a(unsigned long int num, unsigned int base, int uc,char * bf) {
   *bf=0;
 }
 
+/* Unsigned pointer-wide integers to memory address conversion (%a) */
+static void addr2a(uintptr_t addr, char * bf) {
+  *bf++ = '0';
+  *bf++ = 'x';
+
+  unsigned int digits = 1;
+  int n=0;
+  unsigned long int d=1;
+  while (addr/d >= 10) {
+    d*=10;
+    digits++;
+  }
+
+  unsigned int ctr = 0;
+  while (d!=0) {
+    ctr++;
+    int dgt = addr / d;
+    addr%=d;
+    d/=10;
+    if (n || dgt>0|| d==0) {
+      *bf++ = dgt+(dgt<10 ? '0' : 'a' - 10);
+      ++n;
+    }
+    if (--digits%5 == 0 && d != 0)
+        *bf++ = '-';
+  }
+  *bf=0;
+}
+
+/* Pointer to string conversion (%p) */
+static void ptr2a(void *p, char *bf) {
+    *bf++ = '0';
+    *bf++ = 'x';
+    uli2a((intptr_t)p,16,0,bf);
+}
+
+/* Signed long integer to string conversion (%ld) */
 static void li2a (long num, char * bf) {
   if (num<0) {
     num=-num;
@@ -82,6 +167,7 @@ static void li2a (long num, char * bf) {
   uli2a(num,10,0,bf);
 }
 
+/* Signed integer to string conversion (%d) */
 static void ui2a(unsigned int num, unsigned int base, int uc,char * bf) {
   int n=0;
   unsigned int d=1;
@@ -99,6 +185,46 @@ static void ui2a(unsigned int num, unsigned int base, int uc,char * bf) {
   *bf=0;
 }
 
+/* Integer bit-fields to string conversion (%b, %B) */
+static void bits2a(long int v, int size, char *bf, int l2r) {
+  int i;
+  if (l2r) {
+    for(i = 0; i < size; i++) {
+      *bf++ = '0' + ((v >> i) & 1);
+      if (i && i+1 < size && (i+1)%8 == 0)
+        *bf++  = ' ';
+    }
+  } else {
+    for(i = size - 1; i >= 0; i--) {
+      *bf++ = '0' + ((v >> i) & 1);
+      if (i && i+1 < size && i%4 == 0)
+        *bf++  = ' ';
+    }
+  }
+  *bf=0;
+}
+
+/* Pointer bit-fields to string conversion (%v, %V) */
+static void pbits2a(void *p, int size, char *bf, int l2r) {
+  char *v = (char*)p;
+  int i;
+  if (l2r) {
+    for(i = 0; i < size; i++) {
+      *bf++ = '0' + ((v[i/8] >> i%8) & 1);
+      if (i && i+1 < size && (i+1)%4 == 0)
+        *bf++  = ' ';
+    }
+  } else {
+    for(i = size - 1; i >= 0; i--) {
+      *bf++ = '0' + ((v[i/8] >> i%8) & 1);
+      if (i && i+1 < size && i%4 == 0)
+        *bf++  = ' ';
+    }
+  }
+  *bf=0;
+}
+
+/* Signed integer to string (%d) */
 static void i2a (int num, char * bf) {
   if (num<0) {
     num=-num;
@@ -107,6 +233,7 @@ static void i2a (int num, char * bf) {
   ui2a(num,10,0,bf);
 }
 
+/* Char to int conversion  */
 static int a2d(char ch) {
   if (ch>='0' && ch<='9')
     return ch-'0';
@@ -117,7 +244,7 @@ static int a2d(char ch) {
   else return -1;
 }
 
-static char a2i(char ch, char** src,int base,int* nump) {
+static char a2i(char ch, char** src, int base, int* nump) {
   char* p= *src;
   int num=0;
   int digit;
@@ -131,7 +258,7 @@ static char a2i(char ch, char** src,int base,int* nump) {
   return ch;
 }
 
-static void putchw(void* putp,putcf putf,int n, char z, char* bf) {
+static void putchw(void* putp, putcf putf, int n, char z, char* bf) {
   char fc=z? '0' : ' ';
   char ch;
   char* p=bf;
@@ -148,17 +275,17 @@ static void putcp(void* p,char c) {
 }
 
 static void _format(void* putp, putcf putf, char *fmt, va_list va) {
-  char bf[12];
+  char bf[256];
   char ch;
   while ((ch=*(fmt++))) {
-    if (ch!='%')
+    if (ch!='%') // if not '%' print character as is
       putf(putp,ch);
-    else {
+    else { // otherwise do the print based on the format following '%'
       char lz=0;
-      char lng=0;
+      char lng=0; // long (i.e., 'l' specifier)
       int w=0;
       ch=*(fmt++);
-      if (ch=='0') {
+      if (ch=='0') { // '0' specifier - padding with zeroes
         ch=*(fmt++);
         lz=1;
       }
@@ -171,8 +298,8 @@ static void _format(void* putp, putcf putf, char *fmt, va_list va) {
       }
       switch (ch) {
         case 0:
-          goto abort;
-        case 'u' : {
+          break;
+        case 'u': {
           if (lng)
             uli2a(va_arg(va, unsigned long int),10,0,bf);
           else
@@ -188,6 +315,30 @@ static void _format(void* putp, putcf putf, char *fmt, va_list va) {
           putchw(putp,putf,w,lz,bf);
           break;
         }
+        case 'p':
+          ptr2a(va_arg(va, void*), bf);
+          putchw(putp,putf,w,lz,bf);
+          break;
+        case 'a':
+          addr2a(va_arg(va, uintptr_t), bf);
+          putchw(putp,putf,w,lz,bf);
+          break;
+        case 'b':
+          bits2a(va_arg(va, long), w > 64 ? 64 : w ? w : 8, bf, 1);
+          putchw(putp,putf,0,0,bf);
+          break;
+        case 'B':
+          bits2a(va_arg(va, long), w > 64 ? 64 : w ? w : 8, bf, 0);
+          putchw(putp,putf,0,0,bf);
+          break;
+        case 'v':
+          pbits2a(va_arg(va, void*), w ? w : 8, bf, 1);
+          putchw(putp,putf,0,0,bf);
+          break;
+        case 'V':
+          pbits2a(va_arg(va, void*), w ? w : 8, bf, 0);
+          putchw(putp,putf,0,0,bf);
+          break;
         case 'x':
         case 'X':
           if (lng)
@@ -222,8 +373,6 @@ static void _format(void* putp, putcf putf, char *fmt, va_list va) {
       }
     }
   }
-abort:
-  ;
 }
 
 static void _charc_stdout (void* p, char c) { write(1,&c,1); }
@@ -258,62 +407,37 @@ static void _charc_literal  (void* p, char c) {
   }
 }
 
-static void printf(char *fmt, ...) {
+static int printf(char *fmt, ...) {
   va_list va;
   va_start(va,fmt);
   _format(NULL,_charc_stdout,fmt,va);
   va_end(va);
+  return 1;
 }
 
-static void eprintf(char *fmt, ...) {
+static int eprintf(char *fmt, ...) {
   va_list va;
   va_start(va,fmt);
   _format(NULL,_charc_stderr,fmt,va);
   va_end(va);
+  return 1;
 }
 
-static void vabort(char *fmt, ...) {
-  va_list va;
-  va_start(va,fmt);
-  _format(NULL,_charc_stderr,fmt,va);
-  va_end(va);
-  abort();
-}
-
-static void dprintf(int fd, char *fmt, ...) {
+static int dprintf(int fd, char *fmt, ...) {
   va_list va;
   va_start(va,fmt);
   intptr_t fd_long = fd;
   _format((void*)fd_long,_charc_file,fmt,va);
   va_end(va);
+  return 1;
 }
 
-static void sprintf(char* s,char *fmt, ...) {
+static int sprintf(char* s, char *fmt, ...) {
   va_list va;
   va_start(va,fmt);
   _format(&s,putcp,fmt,va);
   putcp(&s,0);
   va_end(va);
+  return 1;
 }
-
-#define assert(expr) \
-  ((expr) ? (void)(0) : vabort("%s at %s:%d\n", \
-    #expr, __FILE__,__LINE__))
-
-static void vassert_fail(int expr, int line, char *file, char *fmt,  ...) {
-  if (!expr) {
-    char *afmt = "%s at %s:%d\n";
-    char buf [strlen(fmt) + strlen(afmt) + PATH_MAX +  11];
-    sprintf(buf, afmt, fmt, file, line);
-    fmt = buf;
-
-    va_list va;
-    va_start(va,fmt);
-    _format(NULL,_charc_stderr,fmt,va);
-    va_end(va);
-    abort();
-  }
-}
-
-#define vassert(expr, fmt, ...) \
-    vassert_fail(expr, __LINE__, __FILE__, fmt, __VA_ARGS__)
+#endif

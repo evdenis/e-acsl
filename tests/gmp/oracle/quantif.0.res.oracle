@@ -1,0 +1,31 @@
+[e-acsl] beginning translation.
+FRAMAC_SHARE/libc/stdlib.h:160:[kernel] warning: No code nor implicit assigns clause for function calloc, generating default assigns from the prototype
+[e-acsl] translation done in project "e-acsl".
+[value] Analyzing a complete application starting at main
+[value] Computing initial state
+[value] Initial state computed
+[value:initial-state] Values of globals at initialization
+  __fc_random_counter ∈ {0}
+  __fc_rand_max ∈ {32767}
+  __fc_heap_status ∈ [--..--]
+  __e_acsl_init ∈ [--..--]
+  __e_acsl_internal_heap ∈ [--..--]
+  __e_acsl_heap_allocation_size ∈ [--..--]
+tests/gmp/quantif.i:9:[value] warning: assertion got status unknown.
+tests/gmp/quantif.i:9:[value] entering loop for the first time
+[value] using specification for function __e_acsl_assert
+tests/gmp/quantif.i:10:[value] warning: assertion got status unknown.
+tests/gmp/quantif.i:10:[value] entering loop for the first time
+tests/gmp/quantif.i:11:[value] warning: assertion got status unknown.
+tests/gmp/quantif.i:11:[value] entering loop for the first time
+tests/gmp/quantif.i:12:[value] warning: assertion got status unknown.
+tests/gmp/quantif.i:12:[value] entering loop for the first time
+tests/gmp/quantif.i:16:[value] warning: assertion got status unknown.
+tests/gmp/quantif.i:16:[value] entering loop for the first time
+FRAMAC_SHARE/e-acsl/e_acsl.h:43:[value] warning: function __e_acsl_assert: precondition got status unknown.
+tests/gmp/quantif.i:21:[value] warning: assertion got status unknown.
+tests/gmp/quantif.i:21:[value] entering loop for the first time
+tests/gmp/quantif.i:25:[value] warning: assertion got status unknown.
+tests/gmp/quantif.i:25:[value] entering loop for the first time
+tests/gmp/quantif.i:26:[value] entering loop for the first time
+[value] done for function main

@@ -1,0 +1,12 @@
+[e-acsl] beginning translation.
+[e-acsl] warning: annotating undefined function `isupper':
+                  the generated program may miss memory instrumentation
+                  if there are memory-related annotations.
+FRAMAC_SHARE/libc/stdlib.h:160:[kernel] warning: No code nor implicit assigns clause for function calloc, generating default assigns from the prototype
+tests/runtime/ctype_macros.c:39:[e-acsl] warning: E-ACSL construct `disjoint behaviors' is not yet supported.
+                  Ignoring annotation.
+[e-acsl] translation done in project "e-acsl".
+FRAMAC_SHARE/libc/ctype.h:163:[value] warning: function __gen_e_acsl_isupper: precondition got status unknown.
+FRAMAC_SHARE/e-acsl/e_acsl.h:43:[value] warning: function __e_acsl_assert: precondition got status unknown.
+FRAMAC_SHARE/libc/ctype.h:167:[value] warning: function __gen_e_acsl_isupper, behavior definitely_match: postcondition got status unknown. (Behavior may be inactive, no reduction performed.)
+FRAMAC_SHARE/libc/ctype.h:170:[value] warning: function __gen_e_acsl_isupper, behavior definitely_not_match: postcondition got status unknown. (Behavior may be inactive, no reduction performed.)

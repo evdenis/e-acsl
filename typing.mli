@@ -2,7 +2,7 @@
 (*                                                                        *)
 (*  This file is part of the Frama-C's E-ACSL plug-in.                    *)
 (*                                                                        *)
-(*  Copyright (C) 2012-2016                                               *)
+(*  Copyright (C) 2012-2015                                               *)
 (*    CEA (Commissariat à l'énergie atomique et aux énergies              *)
 (*         alternatives)                                                  *)
 (*                                                                        *)
@@ -20,67 +20,115 @@
 (*                                                                        *)
 (**************************************************************************)
 
+(** Type system which computes the smallest C type that may contain all the
+    possible values of a given integer term or predicate. Also compute the
+    required casts. It is based on interval inference of module {!Interval}.
+
+    It implement Figure 4 of J. Signoles' JFLA'15 paper "Rester statique pour
+    devenir plus rapide, plus précis et plus mince".
+
+    Example: consider a variable [x] of type [int] and a variable [y] of type
+    char on a (strange) architecture in which values of type [int] belongs to
+    the interval [[-128;127]] and values of type [char] belongs to the interval
+    [[-32;31]], while there are no other integral types. Then here are some
+    information computed from the term [1+(x+1)/(y-64)] by the type system:
+    1. [x+1] must be a GMP (because of the potential overflow)
+    2. consequently [x], which is an [int], must be coerced into a GMP and the
+    same for the number 1 in this addition.
+    3. [y-64] can be computed in an [int] (because the result belongs to the
+    interval [[-96;-33]]).
+    4. [(x+1)/(y-64)] must be a GMP operation because the numerator is a
+    GMP (see 1.). Consequently [y-64] must be coerced into a GMP too. However,
+    the result belongs to the interval [[-3;3]] and thus can be safely coerced
+    to an [int].
+    5. Consequently the addition of the toplevel term [1+(x+1)/(y-64)] can
+    safely be computed in [int]: its result belongs to [[-2;4]]. *)
+
 open Cil_types
+
+(******************************************************************************)
+(** {2 Datatypes} *)
+(******************************************************************************)
+
+(** Possible types infered by the system. *)
+type integer_ty = private
+  | Gmp
+  | C_type of ikind
+  | Other (** Any non-integral type *)
+
+(** {3 Smart constructors} *)
+
+val gmp: integer_ty
+val c_int: integer_ty
+val ikind: ikind -> integer_ty
+val other: integer_ty
+
+(** {3 Useful operations over {!integer_ty}} *)
+
+exception Not_an_integer
+val typ_of_integer_ty: integer_ty -> typ
+(** @return the C type corresponding to an {!integer_ty}. That is [Gmpz.t ()]
+    for [Gmp] and [TInt(ik, [[]])] for [Ctype ik].
+    @raise Not_an_integer in case of {!Other}. *)
+
+val join: integer_ty -> integer_ty -> integer_ty
+(** {!integer_ty} is a join-semi-lattice if you do not consider [Other]. If
+    there is no [Other] in argument, this function computes the join of this
+    semi-lattice. If one of the argument is {!Other}, the function assumes that
+    the other argument is also {!Other}. In this case, the result is [Other]. *)
 
 (******************************************************************************)
 (** {2 Typing} *)
 (******************************************************************************)
 
-val ikind_of_integer: Integer.t -> bool -> ikind
-(** Compute the best type of a bigint. The boolean must be [true] for unsigned
-    and [false] for signed.
-    @raise Cil.Not_representable if the integer does not fit in any C type. *)
+val type_term: force:bool -> ?ctx:integer_ty -> term -> unit
+(** Compute the type of each subterm of the given term in the given context. If
+    [force] is true, then the conversion to the given context is done even if
+    -e-acsl-gmp-only is set. *)
 
-val type_named_predicate: ?must_clear:bool -> predicate named -> unit
-(** Compute the type of each term of the given predicate. *)
-
-val type_term: term -> unit
-(** Compute the type of the given term. *)
-
-val typ_of_term: term -> typ
-(** Get the type of the given term. Must have been previously computed. *)
-
-val typ_of_term_operation: term -> typ
-(** Get the type in which the operation corresponding to the term must be
-    performed. Typing of the given term must have been previously computed. *)
-
-val unsafe_set_term: term -> typ -> unit
-(** Modify the type of the given term. No verification is done to check that the
-    new type is correct. *)
-
-val unsafe_unify: from:logic_var -> logic_var -> unit
-(** Set the type of the second logic var to the type of the first one, named
-    [from]. *) 
+val type_named_predicate: ?must_clear:bool -> predicate -> unit
+(** Compute the type of each term of the given predicate.
+    Set {!must_clear} to false in order to not reset the environment. *)
 
 val clear: unit -> unit
 (** Remove all the previously computed types. *)
 
-(******************************************************************************)
-(** {2 Subtyping} *)
-(******************************************************************************)
+(** {3 Getters}
 
-val principal_type: term -> term -> typ
-(** Get the principal type of the two given terms, that is the type which may
-    contain both of them. Their types must have been previously computed. *)
+    Below, the functions assume that either {!type_term} or
+    {!type_named_predicate} has been previously computed for the given term or
+    predicate. *)
 
-val context_sensitive: 
-  loc:location -> ?name:string -> 
-  Env.t -> typ -> bool -> term option -> exp -> exp * Env.t
-(** [context_sensitive env ty is_mpz_string t_opt e] converts [e] in [env] in
-    such a way that it becomes usable in a context of type [ty]. [t_opt], if
-    any, is a term denoting by [e]. [is_mpz_string] is [true] iff [e] is a
-    string denoting a MPZ integer. *)
+val get_integer_ty: term -> integer_ty
+(** @return the infered type for the given term. *)
 
-val is_representable: Integer.t -> ikind -> bool
-(** Is the given constant representable?
-    (See [Cil_types.CInt64] for details about arguments *)
+val get_integer_op: term -> integer_ty
+(** @return the infered type for the top operation of the given term.
+    It is meaningless to call this function over a non-arithmetical/logical
+    operator. *)
+
+val get_integer_op_of_predicate: predicate -> integer_ty
+(** @return the infered type for the top operation of the given predicate. *)
+
+val get_typ: term -> typ
+(** Get the type which the given term must be generated to. *)
+
+val get_op: term -> typ
+(** Get the type which the operation on top of the given term must be generated
+    to. *)
+
+val get_cast: term -> typ option
+(** Get the type which the given term must be converted to (if any). *)
+
+val get_cast_of_predicate: predicate -> typ option
+(** Like {!get_cast}, but for predicates. *)
 
 (******************************************************************************)
 (** {2 Internal stuff} *)
 (******************************************************************************)
 
 val compute_quantif_guards_ref
-    : (predicate named -> logic_var list -> predicate named -> 
+    : (predicate -> logic_var list -> predicate ->
        (term * relation * logic_var * relation * term) list) ref
 (** Forward reference. *)
 

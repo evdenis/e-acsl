@@ -66,7 +66,7 @@ module Logic_binding: sig
   val remove: t -> logic_var -> t
 end
 
-val add_assert: t -> stmt -> predicate named -> unit
+val add_assert: t -> stmt -> predicate -> unit
 (** [add_assert env s p] associates the assertion [p] to the statement [s] in
     the environment [env]. *)
 
@@ -119,8 +119,8 @@ val set_annotation_kind: t -> Misc.annotation_kind -> t
 (* ************************************************************************** *)
 
 val push_loop: t -> t
-val add_loop_invariant: t -> predicate named -> t
-val pop_loop: t -> predicate named list * t
+val add_loop_invariant: t -> predicate -> t
+val pop_loop: t -> predicate list * t
 
 (* ************************************************************************** *)
 (** {2 RTEs} *)
